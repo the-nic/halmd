@@ -51,7 +51,7 @@ local function round(x) return math.floor(x + 0.5) end
 -- Construct integrator for given system of particles.
 --
 -- :param table args: keyword arguments
--- :param args.particle: instance of :class:`halmd.mdsim.particle`
+-- :param args.group: instance of :mod:`halmd.mdsim.particle_groups`
 -- :param args.force: instance of :mod:`halmd.mdsim.forces`
 -- :param args.box: instance of :class:`halmd.mdsim.box`
 -- :param number args.timestep: integration time step (defaults to :attr:`halmd.mdsim.clock.timestep`)
@@ -112,10 +112,11 @@ local function round(x) return math.floor(x + 0.5) end
 --    By default this function is connected to :meth:`halmd.mdsim.core.on_finalize`.
 --
 local M = module(function(args)
-    local particle = args.particle
-    if not particle then
-        return error("missing parameter: particle")
+    local group = args.group
+    if not group then
+        error("missing parameter: group", 2)
     end
+    local particle = assert(group.particle)
     local force = args and args.force
     if not force then
         return error("missing argument 'force'")
@@ -143,7 +144,7 @@ local M = module(function(args)
     local rng = random.generator()
     local logger = log.logger({label = "verlet_boltzmann"})
 
-    local self = verlet(particle, force, box, timestep, logger)
+    local self = verlet(particle, group, force, box, timestep, logger)
 
     -- capture C++ method set_timestep
     local set_timestep = assert(self.set_timestep)
@@ -182,7 +183,9 @@ local M = module(function(args)
     self.connect = function(self)
         if #conn == 0 then
             table.insert(conn, assert(clock:on_set_timestep(function(timestep) set_timestep(self, timestep) end)))
+            table.insert(conn, assert(core:on_prepend_integrate(function() self:acquire_net_force() end)))
             table.insert(conn, assert(core:on_integrate(function() self:integrate() end)))
+            table.insert(conn, assert(core:on_prepend_finalize(function() self:acquire_net_force() end)))
             table.insert(conn, assert(core:on_finalize(finalize)))
             table.insert(conn, assert(profiler:on_profile(self.runtime.integrate, "first half-step of velocity-Verlet")))
             table.insert(conn, assert(profiler:on_profile(self.runtime.finalize, "second half-step of velocity-Verlet")))

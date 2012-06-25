@@ -54,6 +54,8 @@ local function liquid(args)
 
     -- create system state
     local particle = mdsim.particle({box = box, particles = nparticle, species = nspecies})
+    -- select all particles
+    local particle_group = mdsim.particle_groups.all({particle = particle})
 
     -- smoothly truncated Lennard-Jones potential
     local potential = mdsim.potentials.lennard_jones({particle = particle, cutoff = args.cutoff})
@@ -70,7 +72,7 @@ local function liquid(args)
     -- add velocity-Verlet integrator
     local integrator = mdsim.integrators.verlet({
         box = box
-      , particle = particle
+      , group = particle_group
       , force = force
       , timestep = args.timestep
     })
@@ -79,9 +81,6 @@ local function liquid(args)
     local writer = writers.h5md({path = ("%s.h5"):format(args.output)})
     -- write box specification to H5MD file
     box:writer(writer)
-
-    -- select all particles
-    local particle_group = mdsim.particle_groups.all({particle = particle})
 
     -- sample phase space
     local phase_space = observables.phase_space({box = box, group = particle_group})

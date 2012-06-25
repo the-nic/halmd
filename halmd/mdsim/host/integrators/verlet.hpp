@@ -27,6 +27,7 @@
 #include <halmd/mdsim/box.hpp>
 #include <halmd/mdsim/host/force.hpp>
 #include <halmd/mdsim/host/particle.hpp>
+#include <halmd/mdsim/host/particle_group.hpp>
 #include <halmd/utility/profiler.hpp>
 
 namespace halmd {
@@ -39,6 +40,7 @@ class verlet
 {
 public:
     typedef host::particle<dimension, float_type> particle_type;
+    typedef particle_group particle_group_type;
     typedef typename particle_type::vector_type vector_type;
     typedef force<dimension, float_type> force_type;
     typedef mdsim::box<dimension> box_type;
@@ -48,11 +50,18 @@ public:
 
     verlet(
         std::shared_ptr<particle_type> particle
+      , std::shared_ptr<particle_group_type> group
       , std::shared_ptr<force_type> force
       , std::shared_ptr<box_type const> box
       , double timestep
       , std::shared_ptr<logger_type> logger = std::make_shared<logger_type>()
     );
+
+    /**
+     * Copy net forces to buffer.
+     */
+    void acquire_net_force();
+
     void integrate();
     void finalize();
     void set_timestep(double timestep);
@@ -70,6 +79,7 @@ private:
     typedef typename force_type::net_force_array_type net_force_array_type;
     typedef typename particle_type::mass_array_type mass_array_type;
     typedef typename particle_type::size_type size_type;
+    typedef typename particle_group_type::array_type group_array_type;
 
     typedef utility::profiler profiler_type;
     typedef typename profiler_type::accumulator_type accumulator_type;
@@ -83,6 +93,8 @@ private:
 
     /** system state */
     std::shared_ptr<particle_type> particle_;
+    /** particle group */
+    std::shared_ptr<particle_group_type> group_;
     /** particle forces */
     std::shared_ptr<force_type> force_;
     /** simulation domain */
@@ -93,6 +105,10 @@ private:
     float_type timestep_half_;
     /** module logger */
     std::shared_ptr<logger_type> logger_;
+    /** buffer of net forces */
+    net_force_array_type net_force_;
+    /** cache observer of net forces */
+    cache<> net_force_cache_;
     /** profiling runtime accumulators */
     runtime runtime_;
 };

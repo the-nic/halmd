@@ -112,7 +112,9 @@ void ideal_gas<modules_type>::test()
     BOOST_TEST_MESSAGE("run NVE simulation");
     unsigned int constexpr steps = 1000;
     for (unsigned int i = 0; i < steps; ++i) {
+        integrator->acquire_net_force();
         integrator->integrate();
+        integrator->acquire_net_force();
         integrator->finalize();
     }
 
@@ -146,13 +148,13 @@ ideal_gas<modules_type>::ideal_gas()
 
     // create modules
     particle = std::make_shared<particle_type>(npart, 1);
+    std::shared_ptr<particle_group_type> group = std::make_shared<particle_group_type>(particle);
     box = std::make_shared<box_type>(edges);
     random = std::make_shared<random_type>();
     position = std::make_shared<position_type>(particle, box, slab);
     velocity = std::make_shared<velocity_type>(particle, random, temp);
     std::shared_ptr<force_type> force = std::make_shared<force_type>(*particle);
-    integrator = std::make_shared<integrator_type>(particle, force, box, timestep);
-    std::shared_ptr<particle_group_type> group = std::make_shared<particle_group_type>(particle);
+    integrator = std::make_shared<integrator_type>(particle, group, force, box, timestep);
     thermodynamics = std::make_shared<thermodynamics_type>(particle, force, group, box);
 }
 

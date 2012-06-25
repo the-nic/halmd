@@ -38,42 +38,46 @@ __global__ void integrate(
   , gpu_vector_type* g_image
   , float4* g_velocity
   , gpu_vector_type const* g_force
+  , unsigned int const* g_group
+  , unsigned int nparticle
+  , unsigned int nthread
   , float timestep
   , fixed_vector<float, dimension> box_length
 )
 {
-    // kernel execution parameters
-    unsigned int const thread = GTID;
-    unsigned int const nthread = GTDIM;
+    if (GTID < nparticle) {
+        // kernel execution parameters
+        unsigned int const thread = g_group[GTID];
 
-    // read position, species, velocity, mass, image, force from global memory
-    fixed_vector<float_type, dimension> r, v;
-    unsigned int species;
-    float mass;
+        // read position, species, velocity, mass, image, force from global memory
+        fixed_vector<float_type, dimension> r, v;
+        unsigned int species;
+        float mass;
 #ifdef USE_VERLET_DSFUN
-    tie(r, species) <<= tie(g_position[thread], g_position[thread + nthread]);
-    tie(v, mass) <<= tie(g_velocity[thread], g_velocity[thread + nthread]);
+        tie(r, species) <<= tie(g_position[thread], g_position[thread + nthread]);
+        tie(v, mass) <<= tie(g_velocity[thread], g_velocity[thread + nthread]);
 #else
-    tie(r, species) <<= g_position[thread];
-    tie(v, mass) <<= g_velocity[thread];
+        tie(r, species) <<= g_position[thread];
+        tie(v, mass) <<= g_velocity[thread];
 #endif
-    fixed_vector<float, dimension> image = g_image[thread];
-    fixed_vector<float, dimension> f = g_force[thread];
+        fixed_vector<float, dimension> image = g_image[thread];
+        fixed_vector<float, dimension> f = g_force[thread];
 
-    // advance position by full step, velocity by half step
-    v += f * (timestep / 2) / mass;
-    r += v * timestep;
-    image += box_kernel::reduce_periodic(r, box_length);
+        // advance position by full step, velocity by half step
+        v += f * (timestep / 2) / mass;
+        r += v * timestep;
+        image += box_kernel::reduce_periodic(r, box_length);
 
-    // store position, species, velocity, mass, image in global memory
+        // store position, species, velocity, mass, image in global memory
 #ifdef USE_VERLET_DSFUN
-    tie(g_position[thread], g_position[thread + nthread]) <<= tie(r, species);
-    tie(g_velocity[thread], g_velocity[thread + nthread]) <<= tie(v, mass);
+        tie(g_position[thread], g_position[thread + nthread]) <<= tie(r, species);
+        tie(g_velocity[thread], g_velocity[thread + nthread]) <<= tie(v, mass);
 #else
-    g_position[thread] <<= tie(r, species);
-    g_velocity[thread] <<= tie(v, mass);
+        g_position[thread] <<= tie(r, species);
+        g_velocity[thread] <<= tie(v, mass);
 #endif
-    g_image[thread] = image;
+        g_image[thread] = image;
+    }
 }
 
 /**
@@ -83,32 +87,36 @@ template <int dimension, typename float_type, typename gpu_vector_type>
 __global__ void finalize(
     float4* g_velocity
   , gpu_vector_type const* g_force
+  , unsigned int const* g_group
+  , unsigned int nparticle
+  , unsigned int nthread
   , float timestep
 )
 {
-    // kernel execution parameters
-    unsigned int const thread = GTID;
-    unsigned int const nthread = GTDIM;
+    if (GTID < nparticle) {
+        // kernel execution parameters
+        unsigned int const thread = g_group[GTID];
 
-    // read velocity, mass, force from global memory
-    fixed_vector<float_type, dimension> v;
-    float mass;
+        // read velocity, mass, force from global memory
+        fixed_vector<float_type, dimension> v;
+        float mass;
 #ifdef USE_VERLET_DSFUN
-    tie(v, mass) <<= tie(g_velocity[thread], g_velocity[thread + nthread]);
+        tie(v, mass) <<= tie(g_velocity[thread], g_velocity[thread + nthread]);
 #else
-    tie(v, mass) <<= g_velocity[thread];
+        tie(v, mass) <<= g_velocity[thread];
 #endif
-    fixed_vector<float, dimension> f = g_force[thread];
+        fixed_vector<float, dimension> f = g_force[thread];
 
-    // advance velocity by half step
-    v += f * (timestep / 2) / mass;
+        // advance velocity by half step
+        v += f * (timestep / 2) / mass;
 
-    // store velocity, mass in global memory
+        // store velocity, mass in global memory
 #ifdef USE_VERLET_DSFUN
-    tie(g_velocity[thread], g_velocity[thread + nthread]) <<= tie(v, mass);
+        tie(g_velocity[thread], g_velocity[thread + nthread]) <<= tie(v, mass);
 #else
-    g_velocity[thread] <<= tie(v, mass);
+        g_velocity[thread] <<= tie(v, mass);
 #endif
+    }
 }
 
 } // namespace verlet_kernel

@@ -37,12 +37,18 @@ struct verlet_wrapper
     cuda::function <void (
         float4*, coalesced_vector_type*, float4*
       , coalesced_vector_type const*
+      , unsigned int const*
+      , unsigned int
+      , unsigned int
       , float
       , vector_type
     )> integrate;
     cuda::function <void (
         float4*
       , coalesced_vector_type const*
+      , unsigned int const*
+      , unsigned int
+      , unsigned int
       , float
     )> finalize;
 

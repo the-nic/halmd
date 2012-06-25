@@ -148,6 +148,7 @@ struct lennard_jones_fluid
     std::shared_ptr<neighbour_type> neighbour;
     std::shared_ptr<msd_type> msd;
     std::shared_ptr<particle_type> particle;
+    std::shared_ptr<particle_group_type> group;
     std::shared_ptr<position_type> position;
     std::shared_ptr<random_type> random;
     std::shared_ptr<thermodynamics_type> thermodynamics;
@@ -182,7 +183,7 @@ void lennard_jones_fluid<modules_type>::test()
     }
 
     // set different timestep and choose NVE integrator
-    std::shared_ptr<nve_integrator_type> nve_integrator = std::make_shared<nve_integrator_type>(particle, force, box, timestep);
+    std::shared_ptr<nve_integrator_type> nve_integrator = std::make_shared<nve_integrator_type>(particle, group, force, box, timestep);
 
     // stochastic thermostat => centre particle velocities around zero
     shift_velocity(*particle, -thermodynamics->v_cm());
@@ -198,7 +199,9 @@ void lennard_jones_fluid<modules_type>::test()
     steps = static_cast<unsigned int>(ceil(30 / timestep));
     unsigned int period = static_cast<unsigned int>(round(0.01 / timestep));
     for (unsigned int i = 0; i < steps; ++i) {
+        nve_integrator->acquire_net_force();
         nve_integrator->integrate();
+        nve_integrator->acquire_net_force();
         nve_integrator->finalize();
         if(i > steps / 2 && i % period == 0) {
             temp_(thermodynamics->temp());
@@ -223,7 +226,9 @@ void lennard_jones_fluid<modules_type>::test()
     )); // relaxation time (from VACF)
     for (unsigned int i = 0; i < steps; ++i) {
         // perform MD step
+        nve_integrator->acquire_net_force();
         nve_integrator->integrate();
+        nve_integrator->acquire_net_force();
         nve_integrator->finalize();
 
         // measurement
@@ -348,6 +353,7 @@ lennard_jones_fluid<modules_type>::lennard_jones_fluid()
     // create modules
     random = std::make_shared<random_type>();
     particle = std::make_shared<particle_type>(npart, 1);
+    group = std::make_shared<particle_group_type>(particle);
     box = std::make_shared<box_type>(edges);
     potential = std::make_shared<potential_type>(particle->nspecies(), particle->nspecies(), rc_mat, epsilon_mat, sigma_mat);
     binning = std::make_shared<binning_type>(particle, box, potential->r_cut(), skin);
@@ -356,7 +362,6 @@ lennard_jones_fluid<modules_type>::lennard_jones_fluid()
     position = std::make_shared<position_type>(particle, box, slab);
     velocity = std::make_shared<velocity_type>(particle, random, temp);
     force = std::make_shared<force_type>(potential, particle, particle, box, neighbour);
-    std::shared_ptr<particle_group_type> group = std::make_shared<particle_group_type>(particle);
     thermodynamics = std::make_shared<thermodynamics_type>(particle, force, group, box);
 }
 

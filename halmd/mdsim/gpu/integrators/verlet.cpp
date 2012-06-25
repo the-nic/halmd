@@ -32,6 +32,7 @@ namespace integrators {
 template <int dimension, typename float_type>
 verlet<dimension, float_type>::verlet(
     std::shared_ptr<particle_type> particle
+  , std::shared_ptr<particle_group_type> group
   , std::shared_ptr<force_type> force
   , std::shared_ptr<box_type const> box
   , double timestep
@@ -39,11 +40,13 @@ verlet<dimension, float_type>::verlet(
 )
   // dependency injection
   : particle_(particle)
+  , group_(group)
   , force_(force)
   , box_(box)
   , logger_(logger)
   // reference CUDA C++ verlet_wrapper
   , wrapper_(&verlet_wrapper<dimension>::wrapper)
+  , net_force_(particle_->nparticle())
 {
     set_timestep(timestep);
 }
@@ -57,25 +60,50 @@ void verlet<dimension, float_type>::set_timestep(double timestep)
     timestep_ = timestep;
 }
 
+template <int dimension, typename float_type>
+void verlet<dimension, float_type>::acquire_net_force()
+{
+    cache<net_force_array_type> const& net_force_cache = force_->net_force();
+
+    if (net_force_cache_ != net_force_cache) {
+        cache_proxy<net_force_array_type const> net_force = net_force_cache;
+
+        LOG_TRACE("copy net forces to buffer");
+
+        cuda::copy(net_force->begin(), net_force->end(), net_force_.begin());
+
+        net_force_cache_ = net_force_cache;
+    }
+}
+
 /**
  * First leapfrog half-step of velocity-Verlet algorithm
  */
 template <int dimension, typename float_type>
 void verlet<dimension, float_type>::integrate()
 {
-    cache_proxy<net_force_array_type const> net_force = force_->net_force();
+    cache_proxy<group_array_type const> group = group_->unordered();
+
     cache_proxy<position_array_type> position = particle_->position();
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
     cache_proxy<image_array_type> image = particle_->image();
 
+    LOG_TRACE("first leapfrog half-step");
+
     try {
         scoped_timer_type timer(runtime_.integrate);
-        cuda::configure(particle_->dim.grid, particle_->dim.block);
+        cuda::configure(
+            (group->size() + particle_->dim.threads_per_block() - 1) / particle_->dim.threads_per_block()
+          , particle_->dim.block
+        );
         wrapper_->integrate(
             &*position->begin()
           , &*image->begin()
           , &*velocity->begin()
-          , &*net_force->begin()
+          , &*net_force_.begin()
+          , &*group->begin()
+          , group->size()
+          , particle_->dim.threads()
           , timestep_
           , static_cast<vector_type>(box_->length())
         );
@@ -93,15 +121,24 @@ void verlet<dimension, float_type>::integrate()
 template <int dimension, typename float_type>
 void verlet<dimension, float_type>::finalize()
 {
-    cache_proxy<net_force_array_type const> net_force = force_->net_force();
+    cache_proxy<group_array_type const> group = group_->unordered();
+
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
+
+    LOG_TRACE("second leapfrog half-step");
 
     try {
         scoped_timer_type timer(runtime_.finalize);
-        cuda::configure(particle_->dim.grid, particle_->dim.block);
+        cuda::configure(
+            (group->size() + particle_->dim.threads_per_block() - 1) / particle_->dim.threads_per_block()
+          , particle_->dim.block
+        );
         wrapper_->finalize(
             &*velocity->begin()
-          , &*net_force->begin()
+          , &*net_force_.begin()
+          , &*group->begin()
+          , group->size()
+          , particle_->dim.threads()
           , timestep_
         );
         cuda::thread::synchronize();
@@ -123,6 +160,7 @@ void verlet<dimension, float_type>::luaopen(lua_State* L)
             namespace_("integrators")
             [
                 class_<verlet>()
+                    .def("acquire_net_force", &verlet::acquire_net_force)
                     .def("integrate", &verlet::integrate)
                     .def("finalize", &verlet::finalize)
                     .def("set_timestep", &verlet::set_timestep)
@@ -137,6 +175,7 @@ void verlet<dimension, float_type>::luaopen(lua_State* L)
 
               , def("verlet", &std::make_shared<verlet
                   , std::shared_ptr<particle_type>
+                  , std::shared_ptr<particle_group_type>
                   , std::shared_ptr<force_type>
                   , std::shared_ptr<box_type const>
                   , double

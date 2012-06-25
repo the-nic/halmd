@@ -32,6 +32,7 @@ namespace integrators {
 template <int dimension, typename float_type>
 verlet<dimension, float_type>::verlet(
     std::shared_ptr<particle_type> particle
+  , std::shared_ptr<particle_group_type> group
   , std::shared_ptr<force_type> force
   , std::shared_ptr<box_type const> box
   , double timestep
@@ -39,9 +40,11 @@ verlet<dimension, float_type>::verlet(
 )
   // dependency injection
   : particle_(particle)
+  , group_(group)
   , force_(force)
   , box_(box)
   , logger_(logger)
+  , net_force_(particle_->nparticle())
 {
     set_timestep(timestep);
 }
@@ -53,25 +56,42 @@ void verlet<dimension, float_type>::set_timestep(double timestep)
     timestep_half_ = 0.5 * timestep;
 }
 
+template <int dimension, typename float_type>
+void verlet<dimension, float_type>::acquire_net_force()
+{
+    cache<net_force_array_type> const& net_force_cache = force_->net_force();
+
+    if (net_force_cache_ != net_force_cache) {
+        cache_proxy<net_force_array_type const> net_force = net_force_cache;
+
+        LOG_TRACE("copy net forces to buffer");
+
+        std::copy(net_force->begin(), net_force->end(), net_force_.begin());
+
+        net_force_cache_ = net_force_cache;
+    }
+}
+
 /**
  * First leapfrog half-step of velocity-Verlet algorithm
  */
 template <int dimension, typename float_type>
 void verlet<dimension, float_type>::integrate()
 {
-    cache_proxy<net_force_array_type const> net_force = force_->net_force();
     cache_proxy<mass_array_type const> mass = particle_->mass();
     cache_proxy<position_array_type> position = particle_->position();
     cache_proxy<image_array_type> image = particle_->image();
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
-    size_type const nparticle = particle_->nparticle();
+    cache_proxy<group_array_type const> group = group_->unordered();
+
+    LOG_TRACE("first leapfrog half-step");
 
     scoped_timer_type timer(runtime_.integrate);
 
-    for (size_type i = 0; i < nparticle; ++i) {
+    for (size_type i : *group) {
         vector_type& v = (*velocity)[i];
         vector_type& r = (*position)[i];
-        v += (*net_force)[i] * timestep_half_ / (*mass)[i];
+        v += net_force_[i] * timestep_half_ / (*mass)[i];
         r += v * timestep_;
         (*image)[i] += box_->reduce_periodic(r);
     }
@@ -83,15 +103,16 @@ void verlet<dimension, float_type>::integrate()
 template <int dimension, typename float_type>
 void verlet<dimension, float_type>::finalize()
 {
-    cache_proxy<net_force_array_type const> net_force = force_->net_force();
     cache_proxy<mass_array_type const> mass = particle_->mass();
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
-    size_type const nparticle = particle_->nparticle();
+    cache_proxy<group_array_type const> group = group_->unordered();
+
+    LOG_TRACE("second leapfrog half-step");
 
     scoped_timer_type timer(runtime_.finalize);
 
-    for (size_type i = 0; i < nparticle; ++i) {
-        (*velocity)[i] += (*net_force)[i] * timestep_half_ / (*mass)[i];
+    for (size_type i : *group) {
+        (*velocity)[i] += net_force_[i] * timestep_half_ / (*mass)[i];
     }
 }
 
@@ -106,6 +127,7 @@ void verlet<dimension, float_type>::luaopen(lua_State* L)
             namespace_("integrators")
             [
                 class_<verlet>()
+                    .def("acquire_net_force", &verlet::acquire_net_force)
                     .def("integrate", &verlet::integrate)
                     .def("finalize", &verlet::finalize)
                     .def("set_timestep", &verlet::set_timestep)
@@ -120,6 +142,7 @@ void verlet<dimension, float_type>::luaopen(lua_State* L)
 
               , def("verlet", &std::make_shared<verlet
                   , std::shared_ptr<particle_type>
+                  , std::shared_ptr<particle_group_type>
                   , std::shared_ptr<force_type>
                   , std::shared_ptr<box_type const>
                   , double
