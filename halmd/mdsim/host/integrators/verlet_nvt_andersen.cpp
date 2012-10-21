@@ -33,6 +33,7 @@ namespace integrators {
 template <int dimension, typename float_type>
 verlet_nvt_andersen<dimension, float_type>::verlet_nvt_andersen(
     std::shared_ptr<particle_type> particle
+  , std::shared_ptr<particle_group_type> group
   , std::shared_ptr<force_type> force
   , std::shared_ptr<box_type const> box
   , std::shared_ptr<random_type> random
@@ -42,11 +43,13 @@ verlet_nvt_andersen<dimension, float_type>::verlet_nvt_andersen(
   , std::shared_ptr<logger_type> logger
 )
   : particle_(particle)
+  , group_(group)
   , force_(force)
   , box_(box)
   , random_(random)
   , coll_rate_(coll_rate)
   , logger_(logger)
+  , net_force_(particle_->nparticle())
 {
     set_timestep(timestep);
     set_temperature(temperature);
@@ -70,21 +73,38 @@ void verlet_nvt_andersen<dimension, float_type>::set_temperature(double temperat
 }
 
 template <int dimension, typename float_type>
+void verlet_nvt_andersen<dimension, float_type>::acquire_net_force()
+{
+    cache<net_force_array_type> const& net_force_cache = force_->net_force();
+
+    if (net_force_cache_ != net_force_cache) {
+        cache_proxy<net_force_array_type const> net_force = net_force_cache;
+
+        LOG_TRACE("copy net forces to buffer");
+
+        std::copy(net_force->begin(), net_force->end(), net_force_.begin());
+
+        net_force_cache_ = net_force_cache;
+    }
+}
+
+template <int dimension, typename float_type>
 void verlet_nvt_andersen<dimension, float_type>::integrate()
 {
-    cache_proxy<net_force_array_type const> net_force = force_->net_force();
     cache_proxy<mass_array_type const> mass = particle_->mass();
     cache_proxy<position_array_type> position = particle_->position();
     cache_proxy<image_array_type> image = particle_->image();
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
-    size_type const nparticle = particle_->nparticle();
+    cache_proxy<group_array_type const> group = group_->unordered();
+
+    LOG_TRACE("first leapfrog half-step");
 
     scoped_timer_type timer(runtime_.integrate);
 
-    for (size_type i = 0; i < nparticle; ++i) {
+    for (size_type i : *group) {
         vector_type& v = (*velocity)[i];
         vector_type& r = (*position)[i];
-        v += (*net_force)[i] * timestep_half_ / (*mass)[i];
+        v += net_force_[i] * timestep_half_ / (*mass)[i];
         r += v * timestep_;
         (*image)[i] += box_->reduce_periodic(r);
     }
@@ -93,10 +113,11 @@ void verlet_nvt_andersen<dimension, float_type>::integrate()
 template <int dimension, typename float_type>
 void verlet_nvt_andersen<dimension, float_type>::finalize()
 {
-    cache_proxy<net_force_array_type const> net_force = force_->net_force();
     cache_proxy<mass_array_type const> mass = particle_->mass();
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
-    size_type const nparticle = particle_->nparticle();
+    cache_proxy<group_array_type const> group = group_->unordered();
+    
+    LOG_TRACE("second leapfrog half-step");
 
     scoped_timer_type timer(runtime_.finalize);
 
@@ -105,11 +126,11 @@ void verlet_nvt_andersen<dimension, float_type>::finalize()
     bool rng_cache_valid = false;
 
     // loop over all particles
-    for (size_type i = 0; i < nparticle; ++i) {
+    for (size_type i : *group) {
         vector_type& v = (*velocity)[i];
         // is deterministic step?
         if (random_->uniform<float_type>() > coll_prob_) {
-            v += (*net_force)[i] * timestep_half_ / (*mass)[i];
+            v += net_force_[i] * timestep_half_ / (*mass)[i];
         }
         // stochastic coupling with heat bath
         else {
@@ -142,6 +163,7 @@ void verlet_nvt_andersen<dimension, float_type>::luaopen(lua_State* L)
             namespace_("integrators")
             [
                 class_<verlet_nvt_andersen>()
+                    .def("acquire_net_force", &verlet_nvt_andersen::acquire_net_force)
                     .def("integrate", &verlet_nvt_andersen::integrate)
                     .def("finalize", &verlet_nvt_andersen::finalize)
                     .def("set_timestep", &verlet_nvt_andersen::set_timestep)
@@ -159,6 +181,7 @@ void verlet_nvt_andersen<dimension, float_type>::luaopen(lua_State* L)
 
               , def("verlet_nvt_andersen", &std::make_shared<verlet_nvt_andersen
                   , std::shared_ptr<particle_type>
+                  , std::shared_ptr<particle_group_type>
                   , std::shared_ptr<force_type>
                   , std::shared_ptr<box_type const>
                   , std::shared_ptr<random_type>

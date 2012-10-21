@@ -48,41 +48,45 @@ __global__ void integrate(
   , gpu_vector_type* g_image
   , float4* g_velocity
   , gpu_vector_type const* g_force
+  , unsigned int const* g_group
+  , unsigned int nparticle
+  , unsigned int nthread
   , float timestep
   , fixed_vector<float, dimension> box_length
 )
 {
-    // kernel execution parameters
-    unsigned int const thread = GTID;
-    unsigned int const nthread = GTDIM;
+    if (GTID < nparticle) {
+        // kernel execution parameters
+        unsigned int const thread = g_group[GTID];
 
-    // read position, species, velocity, mass, image, force from global memory
-    fixed_vector<float_type, dimension> r, v;
-    unsigned int species;
-    float mass;
+        // read position, species, velocity, mass, image, force from global memory
+        fixed_vector<float_type, dimension> r, v;
+        unsigned int species;
+        float mass;
 #ifdef USE_VERLET_DSFUN
-    tie(r, species) <<= tie(g_position[thread], g_position[thread + nthread]);
-    tie(v, mass) <<= tie(g_velocity[thread], g_velocity[thread + nthread]);
+        tie(r, species) <<= tie(g_position[thread], g_position[thread + nthread]);
+        tie(v, mass) <<= tie(g_velocity[thread], g_velocity[thread + nthread]);
 #else
-    tie(r, species) <<= g_position[thread];
-    tie(v, mass) <<= g_velocity[thread];
+        tie(r, species) <<= g_position[thread];
+        tie(v, mass) <<= g_velocity[thread];
 #endif
-    fixed_vector<float, dimension> image = g_image[thread];
-    fixed_vector<float, dimension> f = g_force[thread];
+        fixed_vector<float, dimension> image = g_image[thread];
+        fixed_vector<float, dimension> f = g_force[thread];
 
-    // advance position by full step, velocity by half step
-    v += f * (timestep / 2) / mass;
-    r += v * timestep;
-    image += box_kernel::reduce_periodic(r, box_length);
+        // advance position by full step, velocity by half step
+        v += f * (timestep / 2) / mass;
+        r += v * timestep;
+        image += box_kernel::reduce_periodic(r, box_length);
 
     // store position, species, velocity, mass, image in global memory
 #ifdef USE_VERLET_DSFUN
-    tie(g_position[thread], g_position[thread + nthread]) <<= tie(r, species);
-    tie(g_velocity[thread], g_velocity[thread + nthread]) <<= tie(v, mass);
+        tie(g_position[thread], g_position[thread + nthread]) <<= tie(r, species);
+        tie(g_velocity[thread], g_velocity[thread + nthread]) <<= tie(v, mass);
 #else
-    g_position[thread] <<= tie(r, species);
-    g_velocity[thread] <<= tie(v, mass);
+        g_position[thread] <<= tie(r, species);
+        g_velocity[thread] <<= tie(v, mass);
 #endif
+    }
 }
 
 /**
@@ -92,6 +96,7 @@ __global__ void integrate(
  *
  * @param g_velocity particle velocities (array of size \code{} 2 * nplace \endcode for dsfloat arithmetic)
  * @param g_force particle forces (array of size \code{} nplace \endcode)
+ * @param g_group particle group (array of size \code{} npart \endcode)
  * @param timestep integration time-step
  * @param sqrt_temperature square-root of heat bath temperature
  * @param coll_prob collision probability with heat bath
@@ -103,6 +108,7 @@ template <int dimension, typename float_type, typename gpu_vector_type, typename
 __global__ void finalize(
     float4* g_velocity
   , gpu_vector_type const* g_force
+  , unsigned int const* g_group
   , float timestep
   , float sqrt_temperature
   , float coll_prob
@@ -129,13 +135,14 @@ __global__ void finalize(
 #endif
 
     for (uint i = GTID; i < npart; i += GTDIM) {
+        unsigned int const idx = g_group[i];
         // read velocity, mass from global device memory
         fixed_vector<float_type, dimension> v;
         float mass;
 #ifdef USE_VERLET_DSFUN
-        tie(v, mass) <<= tie(g_velocity[i], g_velocity[i + nplace]);
+        tie(v, mass) <<= tie(g_velocity[idx], g_velocity[idx + nplace]);
 #else
-        tie(v, mass) <<= g_velocity[i];
+        tie(v, mass) <<= g_velocity[idx];
 #endif
 
         // is this a deterministic step?
@@ -148,7 +155,7 @@ __global__ void finalize(
         if (__all(uniform(rng, state) > q)) {
 #endif
             // read force from global device memory
-            fixed_vector<float, dimension> f = g_force[i];
+            fixed_vector<float, dimension> f = g_force[idx];
             // update velocity
             v += f * (timestep / 2) / mass;
         }
@@ -174,9 +181,9 @@ __global__ void finalize(
 
         // write velocity, mass to global device memory
 #ifdef USE_VERLET_DSFUN
-        tie(g_velocity[i], g_velocity[i + nplace]) <<= tie(v, mass);
+        tie(g_velocity[idx], g_velocity[idx + nplace]) <<= tie(v, mass);
 #else
-        g_velocity[i] <<= tie(v, mass);
+        g_velocity[idx] <<= tie(v, mass);
 #endif
     }
 

@@ -39,12 +39,16 @@ struct verlet_nvt_andersen_wrapper
       , coalesced_vector_type*
       , float4*
       , coalesced_vector_type const*
+      , unsigned int const*
+      , unsigned int
+      , unsigned int
       , float
       , vector_type
     )> integrate;
     cuda::function <void (
         float4*
       , coalesced_vector_type const*
+      , unsigned int const*
       , float
       , float
       , float

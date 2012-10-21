@@ -164,6 +164,7 @@ void lennard_jones_fluid<modules_type>::test()
     // create NVT integrator
     std::shared_ptr<nvt_integrator_type> nvt_integrator = std::make_shared<nvt_integrator_type>(
         particle
+      , group
       , force
       , box
       , random
@@ -178,7 +179,9 @@ void lennard_jones_fluid<modules_type>::test()
     velocity->set();
     unsigned int steps = static_cast<unsigned int>(ceil(30 / nvt_integrator->timestep()));
     for (unsigned int i = 0; i < steps; ++i) {
+        nvt_integrator->acquire_net_force();
         nvt_integrator->integrate();
+        nvt_integrator->acquire_net_force();
         nvt_integrator->finalize();
     }
 

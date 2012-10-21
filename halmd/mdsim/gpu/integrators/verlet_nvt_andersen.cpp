@@ -33,6 +33,7 @@ namespace integrators {
 template <int dimension, typename float_type, typename RandomNumberGenerator>
 verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::verlet_nvt_andersen(
     std::shared_ptr<particle_type> particle
+  , std::shared_ptr<particle_group_type> group
   , std::shared_ptr<force_type> force
   , std::shared_ptr<box_type const> box
   , std::shared_ptr<random_type> random
@@ -42,11 +43,13 @@ verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::verlet_nvt_an
   , std::shared_ptr<logger_type> logger
 )
   : particle_(particle)
+  , group_(group)
   , force_(force)
   , box_(box)
   , random_(random)
   , coll_rate_(coll_rate)
   , logger_(logger)
+  , net_force_(particle_->nparticle())
 {
     set_timestep(timestep);
     set_temperature(temperature);
@@ -71,25 +74,50 @@ void verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::set_temp
     LOG("temperature of heat bath: " << temperature_);
 }
 
+template <int dimension, typename float_type, typename RandomNumberGenerator>
+void verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::acquire_net_force()
+{
+    cache<net_force_array_type> const& net_force_cache = force_->net_force();
+
+    if (net_force_cache_ != net_force_cache) {
+        cache_proxy<net_force_array_type const> net_force = net_force_cache;
+
+        LOG_TRACE("copy net forces to buffer");
+
+        cuda::copy(net_force->begin(), net_force->end(), net_force_.begin());
+
+        net_force_cache_ = net_force_cache;
+    }
+}
+
 /**
  * First leapfrog half-step of velocity-Verlet algorithm
  */
 template <int dimension, typename float_type, typename RandomNumberGenerator>
 void verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::integrate()
 {
-    cache_proxy<net_force_array_type const> net_force = force_->net_force();
+    cache_proxy<group_array_type const> group = group_->unordered();
+
     cache_proxy<position_array_type> position = particle_->position();
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
     cache_proxy<image_array_type> image = particle_->image();
 
+    LOG_TRACE("first leapfrog half-step");
+
     scoped_timer_type timer(runtime_.integrate);
     try {
-        cuda::configure(particle_->dim.grid, particle_->dim.block);
+        cuda::configure(
+            (group->size() + particle_->dim.threads_per_block() - 1) / particle_->dim.threads_per_block()
+          , particle_->dim.block
+        );
         wrapper_type::kernel.integrate(
             &*position->begin()
           , &*image->begin()
           , &*velocity->begin()
-          , &*net_force->begin()
+          , &*net_force_.begin()
+          , &*group->begin()
+          , group->size()
+          , particle_->dim.threads()
           , timestep_
           , static_cast<vector_type>(box_->length())
         );
@@ -107,8 +135,11 @@ void verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::integrat
 template <int dimension, typename float_type, typename RandomNumberGenerator>
 void verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::finalize()
 {
-    cache_proxy<net_force_array_type const> net_force = force_->net_force();
+    cache_proxy<group_array_type const> group = group_->unordered();
+
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
+
+    LOG_TRACE("second leapfrog half-step");
 
     scoped_timer_type timer(runtime_.finalize);
     try {
@@ -117,11 +148,12 @@ void verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::finalize
         cuda::configure(random_->rng().dim.grid, random_->rng().dim.block);
         wrapper_type::kernel.finalize(
             &*velocity->begin()
-          , &*net_force->begin()
+          , &*net_force_.begin()
+          , &*group->begin()
           , timestep_
           , sqrt_temperature_
           , coll_prob_
-          , particle_->nparticle()
+          , group->size()
           , particle_->dim.threads()
           , random_->rng().rng()
         );
@@ -144,6 +176,7 @@ void verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::luaopen(
             namespace_("integrators")
             [
                 class_<verlet_nvt_andersen>()
+                    .def("acquire_net_force", &verlet_nvt_andersen::acquire_net_force)
                     .def("integrate", &verlet_nvt_andersen::integrate)
                     .def("finalize", &verlet_nvt_andersen::finalize)
                     .def("set_timestep", &verlet_nvt_andersen::set_timestep)
@@ -161,6 +194,7 @@ void verlet_nvt_andersen<dimension, float_type, RandomNumberGenerator>::luaopen(
 
               , def("verlet_nvt_andersen", &std::make_shared<verlet_nvt_andersen
                   , std::shared_ptr<particle_type>
+                  , std::shared_ptr<particle_group_type>
                   , std::shared_ptr<force_type>
                   , std::shared_ptr<box_type const>
                   , std::shared_ptr<random_type>

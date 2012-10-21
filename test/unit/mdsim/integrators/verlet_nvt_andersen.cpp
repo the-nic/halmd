@@ -86,6 +86,7 @@ struct verlet_nvt_andersen
     std::shared_ptr<box_type> box;
     std::shared_ptr<integrator_type> integrator;
     std::shared_ptr<particle_type> particle;
+    std::shared_ptr<particle_group_type> group;
     std::shared_ptr<position_type> position;
     std::shared_ptr<random_type> random;
     std::shared_ptr<thermodynamics_type> thermodynamics;
@@ -111,7 +112,9 @@ void verlet_nvt_andersen<modules_type>::test()
     velocity->set();
     BOOST_TEST_MESSAGE("run NVT integrator over " << steps << " steps");
     for (unsigned int i = 0; i < steps; ++i) {
+        integrator->acquire_net_force();
         integrator->integrate();
+        integrator->acquire_net_force();
         integrator->finalize();
         if(i % period == 0) {
             temp_(thermodynamics->temp());
@@ -202,7 +205,7 @@ verlet_nvt_andersen<modules_type>::verlet_nvt_andersen()
     position = std::make_shared<position_type>(particle, box, slab);
     velocity = std::make_shared<velocity_type>(particle, group, random, temp);
     std::shared_ptr<force_type> force = std::make_shared<force_type>(*particle);
-    integrator = std::make_shared<integrator_type>(particle, force, box, random, timestep, temp, coll_rate);
+    integrator = std::make_shared<integrator_type>(particle, group, force, box, random, timestep, temp, coll_rate);
     thermodynamics = std::make_shared<thermodynamics_type>(particle, force, group, box);
 }
 

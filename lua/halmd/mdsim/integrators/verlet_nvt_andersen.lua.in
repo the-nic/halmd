@@ -47,7 +47,7 @@ local verlet_nvt_andersen = assert(libhalmd.mdsim.integrators.verlet_nvt_anderse
 -- Construct velocity-Verlet with Andersen thermostat.
 --
 -- :param table args: keyword arguments
--- :param args.particle: instance of :class:`halmd.mdsim.particle`
+-- :param args.group: instance of :mod:`halmd.mdsim.particle_groups`
 -- :param args.force: instance of :mod:`halmd.mdsim.forces`
 -- :param args.box: instance of :class:`halmd.mdsim.box`
 -- :param number args.temperature: temperature of heat bath
@@ -104,10 +104,11 @@ local verlet_nvt_andersen = assert(libhalmd.mdsim.integrators.verlet_nvt_anderse
 --    By default this function is connected to :meth:`halmd.mdsim.core.on_finalize`.
 --
 local M = module(function(args)
-    local particle = args and args.particle
-    if not particle then
-        error("missing argument 'particle'", 2)
+    local group = args.group
+    if not group then
+        error("missing parameter: group", 2)
     end
+    local particle = assert(group.particle)
     local force = args and args.force
     if not force then
         error("missing argument 'force'", 2)
@@ -131,10 +132,11 @@ local M = module(function(args)
         timestep = assert(clock.timestep)
     end
     local rng = random.generator()
-    local logger = log.logger({label = "verlet_nvt_andersen"})
+    local label = assert(group.label)
+    local logger = log.logger({label = ("verlet_nvt_andersen (%s)"):format(label)})
 
     -- construct instance
-    local self = verlet_nvt_andersen(particle, force, box, rng, timestep, temperature, rate, logger)
+    local self = verlet_nvt_andersen(particle, group, force, box, rng, timestep, temperature, rate, logger)
 
     -- capture C++ method set_timestep
     local set_timestep = assert(self.set_timestep)
@@ -149,7 +151,9 @@ local M = module(function(args)
     self.connect = function(self)
         if #conn == 0 then
             table.insert(conn, assert(clock:on_set_timestep(function(timestep) set_timestep(self, timestep) end)))
+            table.insert(conn, assert(core:on_prepend_integrate(function() self:acquire_net_force() end)))
             table.insert(conn, assert(core:on_integrate(function() self:integrate() end)))
+            table.insert(conn, assert(core:on_prepend_finalize(function() self:acquire_net_force() end)))
             table.insert(conn, assert(core:on_finalize(function() self:finalize() end)))
             table.insert(conn, assert(profiler:on_profile(self.runtime.integrate, "first half-step of velocity-Verlet")))
             table.insert(conn, assert(profiler:on_profile(self.runtime.finalize, "second half-step of velocity-Verlet (+ Andersen thermostat)")))
