@@ -152,7 +152,7 @@ ideal_gas<modules_type>::ideal_gas()
     box = std::make_shared<box_type>(edges);
     random = std::make_shared<random_type>();
     position = std::make_shared<position_type>(particle, box, slab);
-    velocity = std::make_shared<velocity_type>(particle, random, temp);
+    velocity = std::make_shared<velocity_type>(particle, group, random, temp);
     std::shared_ptr<force_type> force = std::make_shared<force_type>(*particle);
     integrator = std::make_shared<integrator_type>(particle, group, force, box, timestep);
     thermodynamics = std::make_shared<thermodynamics_type>(particle, force, group, box);

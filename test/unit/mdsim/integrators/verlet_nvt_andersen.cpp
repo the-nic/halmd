@@ -196,13 +196,13 @@ verlet_nvt_andersen<modules_type>::verlet_nvt_andersen()
 
     // create modules
     particle = std::make_shared<particle_type>(npart, 1);
+    std::shared_ptr<particle_group_type> group = std::make_shared<particle_group_type>(particle);
     box = std::make_shared<box_type>(edges);
     random = std::make_shared<random_type>();
     position = std::make_shared<position_type>(particle, box, slab);
-    velocity = std::make_shared<velocity_type>(particle, random, temp);
+    velocity = std::make_shared<velocity_type>(particle, group, random, temp);
     std::shared_ptr<force_type> force = std::make_shared<force_type>(*particle);
     integrator = std::make_shared<integrator_type>(particle, force, box, random, timestep, temp, coll_rate);
-    std::shared_ptr<particle_group_type> group = std::make_shared<particle_group_type>(particle);
     thermodynamics = std::make_shared<thermodynamics_type>(particle, force, group, box);
 }
 

@@ -29,12 +29,14 @@ namespace velocities {
 template <int dimension, typename float_type, typename RandomNumberGenerator>
 boltzmann<dimension, float_type, RandomNumberGenerator>::boltzmann(
     std::shared_ptr<particle_type> particle
+  , std::shared_ptr<particle_group_type> group
   , std::shared_ptr<random_type> random
   , double temperature
   , std::shared_ptr<logger_type> logger
 )
   // dependency injection
   : particle_(particle)
+  , group_(group)
   , random_(random)
   , logger_(logger)
   // select thread-dependent implementation
@@ -85,6 +87,8 @@ boltzmann<dimension, float_type, RandomNumberGenerator>::get_gaussian_impl(int t
 template <int dimension, typename float_type, typename RandomNumberGenerator>
 void boltzmann<dimension, float_type, RandomNumberGenerator>::set()
 {
+    cache_proxy<group_array_type const> group = group_->unordered();
+    
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
 
     scoped_timer_type timer(runtime_.set);
@@ -98,7 +102,8 @@ void boltzmann<dimension, float_type, RandomNumberGenerator>::set()
     );
     gaussian_impl_(
         &*velocity->begin()
-      , particle_->nparticle()
+      , &*group->begin()
+      , group->size()
       , particle_->dim.threads()
       , temp_
       , g_mv_
@@ -117,7 +122,8 @@ void boltzmann<dimension, float_type, RandomNumberGenerator>::set()
     );
     wrapper_type::kernel.shift_rescale(
         &*velocity->begin()
-      , particle_->nparticle()
+      , &*group->begin()
+      , group->size()
       , particle_->dim.threads()
       , temp_
       , g_mv_
@@ -152,6 +158,7 @@ void boltzmann<dimension, float_type, RandomNumberGenerator>::luaopen(lua_State*
 
               , def("boltzmann", &std::make_shared<boltzmann
                   , std::shared_ptr<particle_type>
+                  , std::shared_ptr<particle_group_type>
                   , std::shared_ptr<random_type>
                   , double
                   , std::shared_ptr<logger_type>

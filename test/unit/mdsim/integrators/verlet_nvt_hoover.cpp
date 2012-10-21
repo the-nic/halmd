@@ -288,6 +288,7 @@ verlet_nvt_hoover<modules_type>::verlet_nvt_hoover()
 
     // create modules
     particle = std::make_shared<particle_type>(npart, 1);
+    std::shared_ptr<particle_group_type> group = std::make_shared<particle_group_type>(particle);
     box = std::make_shared<box_type>(edges);
     random = std::make_shared<random_type>();
     potential = std::make_shared<potential_type>(particle->nspecies(), particle->nspecies(), cutoff, epsilon, sigma);
@@ -297,8 +298,7 @@ verlet_nvt_hoover<modules_type>::verlet_nvt_hoover()
     force = std::make_shared<force_type>(potential, particle, particle, box, neighbour);
     integrator = std::make_shared<integrator_type>(particle, force, box, timestep, temp, resonance_frequency);
     position = std::make_shared<position_type>(particle, box, 1);
-    velocity = std::make_shared<velocity_type>(particle, random, start_temp);
-    std::shared_ptr<particle_group_type> group = std::make_shared<particle_group_type>(particle);
+    velocity = std::make_shared<velocity_type>(particle, group, random, start_temp);
     thermodynamics = std::make_shared<thermodynamics_type>(particle, force, group, box);
 }
 

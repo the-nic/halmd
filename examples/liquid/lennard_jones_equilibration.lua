@@ -111,7 +111,7 @@ local function liquid(args)
     -- add velocity-Verlet integrator with Boltzmann distribution
     local integrator = mdsim.integrators.verlet_boltzmann({
         box = box
-      , particle = particle
+      , group = particle_group
       , force = force
       , timestep = args.timestep
       , temperature = args.temperature

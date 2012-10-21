@@ -233,13 +233,13 @@ test_euler<modules_type>::test_euler()
 
     // create modules
     particle = std::make_shared<particle_type>(npart, 1);
+    std::shared_ptr<particle_group_type> particle_group = std::make_shared<particle_group_type>(particle);
     box = std::make_shared<box_type>(edges);
     integrator = std::make_shared<integrator_type>(particle, box, timestep);
     random = std::make_shared<random_type>();
     position = std::make_shared<position_type>(particle, box, slab);
-    velocity = std::make_shared<velocity_type>(particle, random, temp);
+    velocity = std::make_shared<velocity_type>(particle, particle_group, random, temp);
     clock = std::make_shared<clock_type>();
-    std::shared_ptr<particle_group_type> particle_group = std::make_shared<particle_group_type>(particle);
     phase_space = std::make_shared<phase_space_type>(particle, particle_group, box, clock);
 
     // set positions and velocities

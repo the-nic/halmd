@@ -23,6 +23,7 @@
 
 #include <halmd/io/logger.hpp>
 #include <halmd/mdsim/host/particle.hpp>
+#include <halmd/mdsim/host/particle_group.hpp>
 #include <halmd/random/host/random.hpp>
 #include <halmd/utility/profiler.hpp>
 
@@ -40,11 +41,13 @@ class boltzmann
 {
 public:
     typedef host::particle<dimension, float_type> particle_type;
+    typedef particle_group particle_group_type;
     typedef random::host::random random_type;
     typedef logger logger_type;
 
     boltzmann(
         std::shared_ptr<particle_type> particle
+      , std::shared_ptr<particle_group_type> group
       , std::shared_ptr<random_type> random
       , double temperature
       , std::shared_ptr<logger_type> logger = std::make_shared<logger_type>()
@@ -73,9 +76,12 @@ private:
     typedef typename particle_type::size_type size_type;
     typedef typename particle_type::velocity_array_type velocity_array_type;
     typedef typename particle_type::mass_array_type mass_array_type;
+    typedef typename particle_group_type::array_type group_array_type;
 
     /** system state */
     std::shared_ptr<particle_type> particle_;
+    /** particle group */
+    std::shared_ptr<particle_group_type> group_;
     /** random number generator */
     std::shared_ptr<random_type> random_;
     /** module logger */

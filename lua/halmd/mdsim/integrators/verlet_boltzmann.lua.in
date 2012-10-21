@@ -142,7 +142,8 @@ local M = module(function(args)
     end
 
     local rng = random.generator()
-    local logger = log.logger({label = "verlet_boltzmann"})
+    local label = assert(group.label)
+    local logger = log.logger({label = ("verlet_boltzmann (%s)"):format(label)})
 
     local self = verlet(particle, group, force, box, timestep, logger)
 
@@ -154,7 +155,7 @@ local M = module(function(args)
     end
 
     -- couple to bath roughly at given rate
-    local bath = boltzmann(particle, rng, temperature, logger)
+    local bath = boltzmann(particle, group, rng, temperature, logger)
     local interval = math.max(1, round(1 / (rate * timestep)))
     local rate = 1 / (interval * timestep)
     local finalize

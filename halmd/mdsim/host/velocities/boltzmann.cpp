@@ -30,12 +30,14 @@ namespace velocities {
 template <int dimension, typename float_type>
 boltzmann<dimension, float_type>::boltzmann(
     std::shared_ptr<particle_type> particle
+  , std::shared_ptr<particle_group_type> group
   , std::shared_ptr<random_type> random
   , double temperature
   , std::shared_ptr<logger_type> logger
 )
   // dependency injection
   : particle_(particle)
+  , group_(group)
   , random_(random)
   , logger_(logger)
   // set parameters
@@ -51,7 +53,7 @@ void boltzmann<dimension, float_type>::set()
 
     cache_proxy<velocity_array_type> velocity = particle_->velocity();
     cache_proxy<mass_array_type const> mass = particle_->mass();
-    size_type const nparticle = particle_->nparticle();
+    cache_proxy<group_array_type const> group = group_->unordered();
 
     float_type const sigma = std::sqrt(temp_);
     fixed_vector<double, dimension> mv = 0;
@@ -60,7 +62,7 @@ void boltzmann<dimension, float_type>::set()
     float_type r;
     bool r_valid = false;
 
-    for (size_type i = 0; i < nparticle; ++i) {
+    for (size_type i : *group) {
         vector_type& v = (*velocity)[i];
         // assign two components at a time
         for (unsigned int j = 0; j < dimension - 1; j += 2) {
@@ -83,8 +85,8 @@ void boltzmann<dimension, float_type>::set()
     }
 
     fixed_vector<double, dimension> v_cm = mv / m;
-    double scale = std::sqrt(nparticle * temp_ * dimension / (mv2 - m * inner_prod(v_cm, v_cm)));
-    shift_rescale_velocity(*particle_, -v_cm, scale);
+    double scale = std::sqrt(group->size() * temp_ * dimension / (mv2 - m * inner_prod(v_cm, v_cm)));
+    shift_rescale_velocity_group(*particle_, *group_, -v_cm, scale);
 
     LOG_TRACE("velocities rescaled by factor " << scale);
     LOG_TRACE("assigned Boltzmann-distributed velocities");
@@ -112,6 +114,7 @@ void boltzmann<dimension, float_type>::luaopen(lua_State* L)
 
               , def("boltzmann", &std::make_shared<boltzmann
                   , std::shared_ptr<particle_type>
+                  , std::shared_ptr<particle_group_type>
                   , std::shared_ptr<random_type>
                   , double
                   , std::shared_ptr<logger_type>

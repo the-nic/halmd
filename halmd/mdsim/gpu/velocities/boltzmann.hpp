@@ -27,6 +27,7 @@
 
 #include <halmd/io/logger.hpp>
 #include <halmd/mdsim/gpu/particle.hpp>
+#include <halmd/mdsim/gpu/particle_group.hpp>
 #include <halmd/mdsim/gpu/velocities/boltzmann_kernel.hpp>
 #include <halmd/numeric/mp/dsfloat.hpp>
 #include <halmd/random/gpu/random.hpp>
@@ -42,11 +43,13 @@ class boltzmann
 {
 public:
     typedef gpu::particle<dimension, float_type> particle_type;
+    typedef particle_group particle_group_type;
     typedef random::gpu::random<RandomNumberGenerator> random_type;
     typedef logger logger_type;
 
     boltzmann(
         std::shared_ptr<particle_type> particle
+      , std::shared_ptr<particle_group_type> group
       , std::shared_ptr<random_type> random
       , double temperature
       , std::shared_ptr<logger_type> logger = std::make_shared<logger_type>()
@@ -72,6 +75,7 @@ public:
 
 private:
     typedef typename particle_type::velocity_array_type velocity_array_type;
+    typedef typename particle_group_type::array_type group_array_type;
 
     typedef typename particle_type::vector_type vector_type;
     typedef typename particle_type::gpu_vector_type gpu_vector_type;
@@ -87,6 +91,8 @@ private:
 
     /** system state */
     std::shared_ptr<particle_type> particle_;
+    /** particle group */
+    std::shared_ptr<particle_group_type> group_;
     /** random number generator */
     std::shared_ptr<random_type> random_;
     /** module logger */

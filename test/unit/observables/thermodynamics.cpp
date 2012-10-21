@@ -360,7 +360,7 @@ lennard_jones_fluid<modules_type>::lennard_jones_fluid()
     msd = std::make_shared<msd_type>(particle, box);
     neighbour = std::make_shared<neighbour_type>(std::make_pair(particle, particle), std::make_pair(binning, binning), msd, box, potential->r_cut(), skin);
     position = std::make_shared<position_type>(particle, box, slab);
-    velocity = std::make_shared<velocity_type>(particle, random, temp);
+    velocity = std::make_shared<velocity_type>(particle, group, random, temp);
     force = std::make_shared<force_type>(potential, particle, particle, box, neighbour);
     thermodynamics = std::make_shared<thermodynamics_type>(particle, force, group, box);
 }

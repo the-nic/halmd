@@ -46,6 +46,7 @@ template <
 >
 __global__ void gaussian(
     float4* g_v
+  , unsigned int const* g_group
   , unsigned int npart
   , unsigned int nplace
   , float temp
@@ -79,12 +80,13 @@ __global__ void gaussian(
     typename vector_type::value_type cache;
 
     for (uint i = GTID; i < npart; i += GTDIM) {
+        unsigned int const idx = g_group[i];
         vector_type v;
         float mass;
 #ifdef USE_VERLET_DSFUN
-        tie(v, mass) <<= tie(g_v[i], g_v[i + nplace]);
+        tie(v, mass) <<= tie(g_v[idx], g_v[idx + nplace]);
 #else
-        tie(v, mass) <<= g_v[i];
+        tie(v, mass) <<= g_v[idx];
 #endif
         for (uint j = 0; j < dimension - 1; j += 2) {
             tie(v[j], v[j + 1]) = normal(rng, state, mean, sigma);
@@ -102,9 +104,9 @@ __global__ void gaussian(
         mv2 += mass * inner_prod(v, v);
         m += mass;
 #ifdef USE_VERLET_DSFUN
-        tie(g_v[i], g_v[i + nplace]) <<= tie(v, mass);
+        tie(g_v[idx], g_v[idx + nplace]) <<= tie(v, mass);
 #else
-        g_v[i] <<= tie(v, mass);
+        g_v[id] <<= tie(v, mass);
 #endif
     }
 
@@ -132,7 +134,17 @@ template <
     typename vector_type
   , typename T
 >
-__global__ void shift_rescale(float4* g_v, uint npart, uint nplace, dsfloat temp, T const* g_mv, dsfloat const* g_mv2, dsfloat const* g_m, uint size)
+__global__ void shift_rescale(
+    float4* g_v
+  , unsigned int const* g_group
+  , uint npart
+  , uint nplace
+  , dsfloat temp
+  , T const* g_mv
+  , dsfloat const* g_mv2
+  , dsfloat const* g_m
+  , uint size
+)
 {
     enum { dimension = vector_type::static_size };
     typedef typename vector_type::value_type float_type;
@@ -166,19 +178,20 @@ __global__ void shift_rescale(float4* g_v, uint npart, uint nplace, dsfloat temp
     float_type scale = sqrt(npart * temp * static_cast<int>(dimension) / (mv2 - m * inner_prod(vcm, vcm)));
 
     for (uint i = GTID; i < npart; i += GTDIM) {
+        unsigned int const idx = g_group[i];
         vector_type v;
         float mass;
 #ifdef USE_VERLET_DSFUN
-        tie(v, mass) <<= tie(g_v[i], g_v[i + nplace]);
+        tie(v, mass) <<= tie(g_v[idx], g_v[idx + nplace]);
 #else
-        tie(v, mass) <<= g_v[i];
+        tie(v, mass) <<= g_v[idx];
 #endif
         v -= vcm;
         v *= scale;
 #ifdef USE_VERLET_DSFUN
-        tie(g_v[i], g_v[i + nplace]) <<= tie(v, mass);
+        tie(g_v[idx], g_v[idx + nplace]) <<= tie(v, mass);
 #else
-        g_v[i] <<= tie(v, mass);
+        g_v[idx] <<= tie(v, mass);
 #endif
     }
 }

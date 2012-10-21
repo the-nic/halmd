@@ -67,7 +67,7 @@ local boltzmann = assert(libhalmd.mdsim.velocities.boltzmann)
 -- Construct boltzmann module.
 --
 -- :param table args: keyword arguments
--- :param args.particle: instance of :class:`halmd.mdsim.particle`
+-- :param args.group: instance of :class:`halmd.mdsim.particle_groups`
 -- :param number args.temperature: temperature of distribution
 --
 -- .. method:: set()
@@ -79,10 +79,11 @@ local boltzmann = assert(libhalmd.mdsim.velocities.boltzmann)
 --    Temperature of distribution in reduced units.
 --
 local M = module(function(args)
-    local particle = args.particle
-    if not particle then
-        error("bad argument 'parameter'", 2)
+    local group = args.group
+    if not group then
+        error("missing parameter: group", 2)
     end
+    local particle = assert(group.particle)
     local temperature = args.temperature
     if not temperature then
         error("bad argument 'temperature'", 2)
@@ -92,7 +93,7 @@ local M = module(function(args)
     local logger = log.logger({label = ("boltzmann (%s)"):format(label)})
 
     -- construct instance
-    return boltzmann(particle, rng, temperature, logger)
+    return boltzmann(particle, group, rng, temperature, logger)
 end)
 
 return M

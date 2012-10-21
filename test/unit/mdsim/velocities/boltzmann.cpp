@@ -152,9 +152,10 @@ boltzmann<modules_type>::boltzmann()
     }
 
     particle = std::make_shared<particle_type>(npart, 1);
+    std::shared_ptr<particle_group_type> group = std::make_shared<particle_group_type>(particle);
     box = std::make_shared<box_type>(edges);
     random = std::make_shared<random_type>();
-    velocity = std::make_shared<velocity_type>(particle, random, temp);
+    velocity = std::make_shared<velocity_type>(particle, group, random, temp);
 }
 
 template <int dimension, typename float_type>
