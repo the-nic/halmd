@@ -86,7 +86,7 @@ local M = module(function(args)
     -- domain decomposition
     local binning
     if not args.disable_binning then
-        binning = mdsim.binning{box = box, particle = particle2, r_cut = r_cut, skin = skin}
+        binning = mdsim.binning({box = box, particle = particle2, r_cut = r_cut, skin = skin, occupancy = args.occupancy})
     end
 
     -- neighbour lists
