@@ -1,5 +1,5 @@
 --
--- Copyright © 2012  Peter Colberg
+-- Copyright © 2013 Nicolas Höft
 --
 -- This file is part of HALMD.
 --
@@ -20,16 +20,14 @@
 local module = require("halmd.utility.module")
 
 ---
--- Forces
--- ======
+-- Interpolation Functions
+-- =======================
 --
 -- .. toctree::
 --    :maxdepth: 2
 --    :glob:
 --
 --    *
---    trunc/index
---    interpolation/index
 --
 
-return module.loader("halmd.mdsim.forces")
+return module.loader("halmd.mdsim.forces.interpolation")
