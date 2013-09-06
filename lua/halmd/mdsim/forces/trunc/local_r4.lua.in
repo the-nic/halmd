@@ -18,8 +18,9 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 --
 
-local device = require("halmd.utility.device")
-local module = require("halmd.utility.module")
+local utility = require("halmd.utility")
+local device  = require("halmd.utility.device")
+local module  = require("halmd.utility.module")
 
 ---
 -- .. _smooth_r4:
@@ -181,18 +182,21 @@ local module = require("halmd.utility.module")
 --    plot.show()
 
 -- grab C++ wrappers
-local local_r4
-if device.gpu then
-    local_r4 = assert(libhalmd.mdsim.forces.trunc.local_r4_float)
-else
-    local_r4 = assert(libhalmd.mdsim.forces.trunc.local_r4_double)
-end
+local local_r4 ={
+    single = assert(libhalmd.mdsim.forces.trunc.local_r4_float)
+  , double = assert(libhalmd.mdsim.forces.trunc.local_r4_double)
+}
 
 ---
 -- Construct smoothing function.
 --
 -- :param table args: keyword arguments
 -- :param number args.h: smoothing parameter
+-- :param string args.precision: floating point number precision (optional)
+--
+--    The supported values for ``precision`` are "single" and "double". If ``precision``
+--    is not specified, the precision is selected according to the
+--    compute device.
 --
 -- .. attribute:: h
 --
@@ -205,11 +209,14 @@ end
 --    :param logger: instance of :class:`halmd.io.log.logger`
 --
 local M = module(function(args)
-    local h = args.h
-    if type(h) ~= "number" then
-        error("bad argument 'h'", 2)
+    local h = utility.assert_type(utility.assert_kwarg(args, "h"), "number")
+    local precision = args.precision or (device.gpu and "single" or "double")
+
+    if not local_r4[precision] then
+        error("Unsupported precision", 2)
     end
-    local self = local_r4(h)
+
+    local self = local_r4[precision](h)
 
     -- add smoothing parameter as read-only property
     self.h = property(function()
