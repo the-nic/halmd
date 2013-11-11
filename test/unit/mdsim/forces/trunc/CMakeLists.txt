@@ -14,6 +14,7 @@ if(HALMD_WITH_lennard_jones)
   target_link_libraries(test_unit_mdsim_forces_trunc_local_r4
     halmd_mdsim_host_potentials_lennard_jones
     halmd_mdsim_forces_trunc
+    halmd_mdsim
     ${HALMD_TEST_LIBRARIES}
   )
   add_test(unit/mdsim/forces/trunc/local_r4/host
