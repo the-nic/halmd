@@ -21,6 +21,8 @@
 #include <halmd/mdsim/gpu/box_kernel.cuh>
 #include <halmd/utility/gpu/thread.cuh>
 
+#include <halmd/mdsim/geometries/cuboid.hpp>
+
 namespace halmd {
 namespace mdsim {
 namespace gpu {
@@ -81,6 +83,9 @@ region_wrapper<dimension, geometry_type>::kernel = {
   , region_kernel::gen_index
   , region_kernel::compute_bin_border
 };
+
+template class region_wrapper<3, halmd::mdsim::geometries::cuboid<3, float> >;
+template class region_wrapper<2, halmd::mdsim::geometries::cuboid<2, float> >;
 
 } // namespace gpu
 } // namespace mdsim
