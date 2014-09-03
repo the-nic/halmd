@@ -96,9 +96,9 @@ get_unordered(particle_group& group, iterator_type const& first)
 template <typename particle_type>
 double get_mean_en_kin(particle_type const& particle, particle_group& group)
 {
-    typename particle_group::array_type const& unordered        = *group.unordered();
+    typename particle_group::array_type const& unordered = *group.unordered();
     auto const& velocity = read_cache(particle.velocity());
-    typename particle_type::mass_array_type const& mass         = *particle.mass();
+    typename particle_type::mass_array_type const& mass = *particle.mass();
 
     double mv2 = 0;
     for (typename particle_group::size_type i : unordered) {
@@ -226,6 +226,37 @@ get_stress_tensor(particle_type& particle, particle_group& group)
         stress_tensor += stress_pot[i] + stress_kin;
     }
     return stress_tensor;
+}
+
+template <typename particle_type>
+void particle_group_to_particle(particle_type const& particle_src, particle_group& group, particle_type& particle_dst)
+{
+    typedef typename particle_group::size_type size_type;
+    typedef typename particle_group::array_type group_array_type;
+    enum { dimension = particle_type::force_type::static_size };
+
+    auto const& ordered = read_cache(group.ordered());
+    auto position = make_cache_mutable(particle_dst.position());
+    auto image    = make_cache_mutable(particle_dst.image());
+    auto velocity = make_cache_mutable(particle_dst.velocity());
+    auto species  = make_cache_mutable(particle_dst.species());
+    auto mass     = make_cache_mutable(particle_dst.mass());
+
+    auto const& position_src = read_cache(particle_src.position());
+    auto const& image_src    = read_cache(particle_src.image());
+    auto const& velocity_src = read_cache(particle_src.velocity());
+    auto const& species_src  = read_cache(particle_src.species());
+    auto const& mass_src     = read_cache(particle_src.mass());
+
+    size_type i = 0;
+    for (size_type j : ordered) {
+        (*position)[i] = position_src[j];
+        (*image)[i] = image_src[j];
+        (*velocity)[i] = velocity_src[j];
+        (*species)[i] = species_src[j];
+        (*mass)[i] = mass_src[j];
+        ++i;
+    }
 }
 
 } // namespace host
