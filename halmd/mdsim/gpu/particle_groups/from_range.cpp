@@ -128,6 +128,17 @@ wrap_from_range(
     );
 }
 
+template <typename particle_group_type, typename particle_type>
+static void
+wrap_to_particle(std::shared_ptr<particle_group_type> self, std::shared_ptr<particle_type> particle_src, std::shared_ptr<particle_type> particle_dst)
+{
+    if(*self->size() != particle_dst->nparticle()) {
+        LOG_TRACE("group size: " << *self->size() << ", destination particle size: " << particle_dst->nparticle());
+        throw std::logic_error("source group size and destination particle size must match!");
+    }
+    particle_group_to_particle(*particle_src, *self, *particle_dst);
+}
+
 template <typename particle_type>
 void from_range<particle_type>::luaopen(lua_State* L)
 {
@@ -139,6 +150,7 @@ void from_range<particle_type>::luaopen(lua_State* L)
             namespace_("particle_groups")
             [
                 class_<from_range, particle_group>()
+                   .def("to_particle", &wrap_to_particle<from_range<particle_type>, particle_type>)
 
               , def("from_range", &wrap_from_range<particle_type>)
             ]
