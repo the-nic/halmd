@@ -30,14 +30,14 @@ namespace gpu {
 /**
  * CUDA C++ wrapper
  */
-template<typename T, typename Predicate>
+template<typename InputIterator, typename OutputIterator, typename Predicate>
 struct copy_if_wrapper
 {
     boost::function<unsigned int (
-        T*           // input array
+        InputIterator           // input array
       , unsigned int // array length
       , Predicate
-      , T*           // output array
+      , OutputIterator           // output array
     )> copy_if;
     static copy_if_wrapper const kernel;
 };

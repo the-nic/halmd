@@ -50,9 +50,9 @@ copy_if(
   , Predicate pred
 )
 {
-    typedef typename std::iterator_traits<InputIterator>::value_type value_type;
+    //typedef typename std::iterator_traits<InputIterator>::value_type value_type;
 
-    auto const& kernel = halmd::algorithm::gpu::copy_if_wrapper<value_type, Predicate>::kernel;
+    auto const& kernel = halmd::algorithm::gpu::copy_if_wrapper<InputIterator, OutputIterator, Predicate>::kernel;
     unsigned int output_size = kernel.copy_if(
         &*first
       , last - first

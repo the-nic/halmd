@@ -32,8 +32,8 @@ namespace algorithm {
 namespace gpu {
 namespace copy_if_kernel {
 
-template <typename T, typename Predicate>
-unsigned int copy_if(T* g_input, unsigned int size, Predicate predicate, T* g_output)
+template <typename InputIterator, typename OutputIterator, typename Predicate>
+unsigned int copy_if(InputIterator g_input, unsigned int size, Predicate predicate, OutputIterator g_output)
 {
     cuda::vector<char> g_temp;
     // allocate gpu memory to store total number of selected elements
@@ -81,9 +81,9 @@ unsigned int copy_if(T* g_input, unsigned int size, Predicate predicate, T* g_ou
 /**
  * CUDA C++ wrapper
  */
-template <typename T, typename Predicate>
-copy_if_wrapper<T, Predicate> const copy_if_wrapper<T, Predicate>::kernel = {
-   copy_if_kernel::copy_if<T, Predicate>
+template <typename InputIterator, typename OutputIterator, typename Predicate>
+copy_if_wrapper<InputIterator, OutputIterator, Predicate> const copy_if_wrapper<InputIterator, OutputIterator, Predicate>::kernel = {
+   copy_if_kernel::copy_if<InputIterator, OutputIterator, Predicate>
 };
 
 } // namespace gpu
