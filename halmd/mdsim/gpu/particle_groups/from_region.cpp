@@ -1,5 +1,5 @@
 /*
- * Copyright © 2014 Nicolas Höft
+ * Copyright © 2014-2015 Nicolas Höft
  *
  * This file is part of HALMD.
  *
@@ -35,12 +35,10 @@ template <typename particle_type>
 from_region<particle_type>::from_region(
     std::shared_ptr<particle_type const> particle
   , std::shared_ptr<region_type> region
-  , selection selected_region
   , std::shared_ptr<logger> logger
 )
   : particle_(particle)
   , region_(region)
-  , selected_region_(selected_region)
   , logger_(logger)
 {
 }
@@ -49,15 +47,14 @@ template <typename particle_type>
 cache<typename from_region<particle_type>::array_type> const&
 from_region<particle_type>::ordered()
 {
-    auto const& mask_cache = region_->mask();
-    if (mask_cache != ordered_cache_) {
+    auto const& selection = region_->selection();
+    if (selection != ordered_cache_) {
         auto ordered = make_cache_mutable(ordered_);
         LOG_TRACE("ordered sequence of particle indices");
-        auto it_range = (selected_region_ == excluded ? region_->excluded() : region_->included());
-        ordered->resize(std::end(it_range) - std::begin(it_range));
-        cuda::copy(std::begin(it_range), std::end(it_range), ordered->begin());
+        ordered->resize(selection->size());
+        cuda::copy(selection->begin(), selection->end(), ordered->begin());
 
-        ordered_cache_ = mask_cache;
+        ordered_cache_ = selection;
     }
     return ordered_;
 }
@@ -66,14 +63,13 @@ template <typename particle_type>
 cache<typename from_region<particle_type>::array_type> const&
 from_region<particle_type>::unordered()
 {
-    auto const& mask_cache = region_->mask();
-    if (mask_cache != unordered_cache_) {
+    auto const& selection = region_->selection();
+    if (selection != unordered_cache_) {
         auto unordered = make_cache_mutable(unordered_);
         LOG_TRACE("unordered sequence of particle indices");
 
-        auto it_range = (selected_region_ == excluded ? region_->excluded() : region_->included());
-        unordered->resize(std::end(it_range) - std::begin(it_range));
-        cuda::copy(std::begin(it_range), std::end(it_range), unordered->begin());
+        unordered->resize(selection->size());
+        cuda::copy(selection->begin(), selection->end(), unordered->begin());
 
         // TODO: is radix sort required here?
         radix_sort(
@@ -81,7 +77,7 @@ from_region<particle_type>::unordered()
           , unordered->end()
         );
 
-        unordered_cache_ = mask_cache;
+        unordered_cache_ = selection;
     }
     return unordered_;
 }
@@ -91,7 +87,7 @@ cache<typename from_region<particle_type>::size_type> const&
 from_region<particle_type>::size()
 {
     auto size = make_cache_mutable(size_);
-    *size = (selected_region_ == excluded ? region_->nexcluded() : region_->nincluded());
+    *size = region_->size();
     return size_;
 }
 
@@ -118,7 +114,6 @@ void from_region<particle_type>::luaopen(lua_State* L)
               , def("from_region", &std::make_shared<from_region<particle_type>
                   , std::shared_ptr<particle_type const>
                   , std::shared_ptr<region_type>
-                  , selection
                   , std::shared_ptr<logger>
                   >)
             ]

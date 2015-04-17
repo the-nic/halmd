@@ -45,17 +45,11 @@ local mdsim   = {
 -- grab C++ wrappers
 local from_region = assert(libhalmd.mdsim.particle_groups.from_region)
 
-local region_selection = {
-    excluded = 1
-  , included = 2
-}
-
 ---
 -- Construct particle group from region.
 --
 -- :param table args: keyword arguments
 -- :param args.region: instance of :class:`halmd.mdsim.region`
--- :param string selection: Select particles within or outside the region. Allowed values are ``included`` and ``excluded``
 -- :param string args.label: group label *(defaults to region label)*
 --
 -- .. attribute:: particle
@@ -103,19 +97,14 @@ local region_selection = {
 local M = module(function(args)
     utility.assert_type(args, "table")
     local region = utility.assert_kwarg(args, "region")
-    local selection = utility.assert_type(utility.assert_kwarg(args, "selection"), "string")
     local label = utility.assert_type(args.label or assert(region.label), "string")
 
     local particle = assert(region.particle)
 
-    if not region_selection[selection] then
-        error(("unsupported region selection '%s'"):format(selection), 2)
-    end
-
     local logger = log.logger({prefix = ("region (%s)"):format(label)})
 
     -- construct particle group from tag range
-    local self = from_region(particle, region, region_selection[selection], logger)
+    local self = from_region(particle, region, logger)
 
     -- capture C++ method to_particle
     local to_particle = assert(self.to_particle)

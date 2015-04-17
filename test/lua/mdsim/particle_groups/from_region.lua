@@ -53,15 +53,17 @@ local function setup(args)
         length[i] = length[i]/2
     end
     local geometry = mdsim.geometries.cuboid({origin = origin, length = length})
-    local region = mdsim.region({particle = particle, label = "upper quadrant", geometry = geometry, box = box})
+    local region = {}
+    region["included"] = mdsim.region({particle = particle, label = "upper quadrant (included)", geometry = geometry, selection = "included", box = box})
+    region["excluded"] = mdsim.region({particle = particle, label = "upper quadrant (excluded)", geometry = geometry, selection = "excluded", box = box})
 
     return box, particle, region, {origin = origin, length = length},  args
 end
 
 local function test(box, particle, region, cuboid, args)
     -- construct included/excluded particle groups
-    local group_included = mdsim.particle_groups.from_region({particle = particle, region = region, selection = "included", label = "included"})
-    local group_excluded = mdsim.particle_groups.from_region({particle = particle, region = region, selection = "excluded", label = "excluded"})
+    local group_included = mdsim.particle_groups.from_region({particle = particle, region = region["included"], label = "included"})
+    local group_excluded = mdsim.particle_groups.from_region({particle = particle, region = region["excluded"], selection = "excluded", label = "excluded"})
     -- check if the total number of particles is correct
     assert(group_excluded.size + group_included.size == args.particles)
 

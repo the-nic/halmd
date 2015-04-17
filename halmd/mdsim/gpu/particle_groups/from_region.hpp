@@ -1,5 +1,5 @@
 /*
- * Copyright © 2014 Nicolas Höft
+ * Copyright © 2014-2015 Nicolas Höft
  *
  * This file is part of HALMD.
  *
@@ -47,18 +47,12 @@ public:
     typedef typename particle_group::size_type size_type;
     typedef halmd::mdsim::gpu::region_base region_type;
 
-    enum selection {
-        excluded = 1
-      , included = 2
-    };
-
     /**
      * Select by region
      */
     from_region(
         std::shared_ptr<particle_type const> particle
       , std::shared_ptr<region_type> region
-      , selection selected_region
       , std::shared_ptr<halmd::logger> logger = std::make_shared<halmd::logger>()
     );
 
@@ -87,8 +81,6 @@ private:
     std::shared_ptr<particle_type const> const particle_;
     /** particle region */
     std::shared_ptr<region_type> const region_;
-    /** use included or excluded region */
-    selection selected_region_;
     /** module logger */
     std::shared_ptr<logger> logger_;
     /** ordered sequence of particle indices */
