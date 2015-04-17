@@ -1,5 +1,5 @@
 /*
- * Copyright © 2014 Nicolas Höft
+ * Copyright © 2014-2015 Nicolas Höft
  *
  * This file is part of HALMD.
  *
@@ -19,11 +19,11 @@
 
 #include <exception>
 
-#include <halmd/mdsim/gpu/region.hpp>
 #include <halmd/algorithm/gpu/radix_sort.hpp>
-#include <halmd/utility/lua/lua.hpp>
-
+#include <halmd/algorithm/gpu/copy_if.hpp>
 #include <halmd/mdsim/geometries/cuboid.hpp>
+#include <halmd/mdsim/gpu/region.hpp>
+#include <halmd/utility/lua/lua.hpp>
 
 namespace halmd {
 namespace mdsim {
@@ -39,20 +39,22 @@ template <int dimension, typename float_type, typename geometry_type>
 region<dimension, float_type, geometry_type>::region(
     std::shared_ptr<particle_type const> particle
   , std::shared_ptr<box_type const> box
-  , std::shared_ptr<geometry_type const> geometry
+  , std::shared_ptr<geometry_type> geometry
+  , geometry_selection geometry_sel
   , std::shared_ptr<logger> logger
 )
   : particle_(particle)
   , box_(box)
   , logger_(logger)
   , geometry_(geometry)
+  , geometry_selection_(geometry_sel)
 {
     try {
         auto mask = make_cache_mutable(mask_);
+        auto selection = make_cache_mutable(selection_);
         mask->reserve(particle_->dim.threads());
         mask->resize(particle_->nparticle());
-        g_particle_permutation_.reserve(particle_->dim.threads());
-        g_particle_permutation_.resize(particle_->nparticle());
+        selection->reserve(particle_->dim.threads());
     }
     catch (cuda::error const&) {
         LOG_ERROR("failed to allocate global device memory");
@@ -61,19 +63,11 @@ region<dimension, float_type, geometry_type>::region(
 }
 
 template <int dimension, typename float_type, typename geometry_type>
-typename region<dimension, float_type, geometry_type>::iterator_range_type
-region<dimension, float_type, geometry_type>::excluded()
+cache<typename region<dimension, float_type, geometry_type>::array_type> const&
+region<dimension, float_type, geometry_type>::selection()
 {
-    update_permutation_();
-    return boost::make_iterator_range(g_particle_permutation_.begin(), g_particle_permutation_.begin() + nexcluded_);
-}
-
-template <int dimension, typename float_type, typename geometry_type>
-typename region<dimension, float_type, geometry_type>::iterator_range_type
-region<dimension, float_type, geometry_type>::included()
-{
-    update_permutation_();
-    return boost::make_iterator_range(g_particle_permutation_.begin() + nexcluded_, g_particle_permutation_.end());
+    update_selection_();
+    return selection_;
 }
 
 template <int dimension, typename float_type, typename geometry_type>
@@ -97,15 +91,16 @@ void region<dimension, float_type, geometry_type>::update_mask_()
 
         auto mask = make_cache_mutable(mask_);
         position_array_type const& position = read_cache(particle_->position());
-        auto const* kernel = &region_wrapper<dimension, geometry_type>::kernel;
+        auto const& kernel = region_wrapper<dimension, geometry_type>::kernel;
         // calculate "bin", ie. inside/outside the region
         cuda::memset(*mask, 0xFF);
         cuda::configure(particle_->dim.grid, particle_->dim.block);
-        kernel->compute_mask(
+        kernel.compute_mask(
             &*position.begin()
           , particle_->nparticle()
           , &*mask->begin()
           , *geometry_
+          , geometry_selection_ == excluded ? halmd::mdsim::gpu::excluded : halmd::mdsim::gpu::included
           , static_cast<position_type>(box_->length())
         );
         mask_cache_ = position_cache;
@@ -116,51 +111,26 @@ void region<dimension, float_type, geometry_type>::update_mask_()
  * update the particle lists for the region
  */
 template <int dimension, typename float_type, typename geometry_type>
-void region<dimension, float_type, geometry_type>::update_permutation_()
+void region<dimension, float_type, geometry_type>::update_selection_()
 {
-    update_mask_();
-
     cache<position_array_type> const& position_cache = particle_->position();
-    if(position_cache != permutation_cache_) {
-        scoped_timer_type timer(runtime_.update_permutation);
-
+    if(position_cache != selection_cache_) {
+        scoped_timer_type timer(runtime_.update_selection);
         unsigned int nparticle = particle_->nparticle();
-        auto const& mask = read_cache(mask_);
+        auto const& position = read_cache(particle_->position());
+        auto selection = make_cache_mutable(selection_);
 
-        // make a copy of the unordered mask that will be used for ordering
-        array_type g_ordered_mask(mask.size());
-        g_ordered_mask.reserve(mask.capacity());
-        cuda::copy(mask.begin(), mask.end(), g_ordered_mask.begin());
+        auto const& kernel = region_wrapper<dimension, geometry_type>::kernel;
+        unsigned int size = kernel.copy_selection(
+            &*position.begin()
+          , nparticle
+          , &*selection->begin()
+          , *geometry_
+          , geometry_selection_ == excluded ? halmd::mdsim::gpu::excluded : halmd::mdsim::gpu::included
+        );
+        selection->resize(size);
 
-        // generate particle permutation ordered by excluded/included
-        auto const* kernel = &region_wrapper<dimension, geometry_type>::kernel;
-        cuda::configure(particle_->dim.grid, particle_->dim.block);
-        kernel->gen_index(g_particle_permutation_, nparticle);
-        radix_sort(g_ordered_mask.begin(), g_ordered_mask.end(), g_particle_permutation_.begin());
-
-        cuda::vector<unsigned int> g_offset(1);
-        cuda::host::vector<unsigned int> h_offset(1);
-        cuda::memset(g_offset, 0xFF);
-        cuda::configure(particle_->dim.grid, particle_->dim.block);
-        kernel->compute_bin_border(g_offset, g_ordered_mask, nparticle);
-        cuda::copy(g_offset, h_offset);
-        // if the first element of the mask array is -1, this means
-        // the offset has not been set and we need to evaluate the first
-        // element of the mask in order to see if all or none particles
-        // are within the region
-        if (h_offset.front() == static_cast<unsigned int>(-1)) {
-            cuda::host::vector<unsigned int> h_first_mask(1);
-            cuda::copy(g_ordered_mask.begin(), g_ordered_mask.begin() + 1, h_first_mask.begin());
-            if (h_first_mask.front() == 1) {
-                nexcluded_ = 0;
-            }
-            else {
-                nexcluded_ = nparticle;
-            }
-        } else {
-            nexcluded_ = h_offset.front();
-        }
-        permutation_cache_ = position_cache;
+        selection_cache_ = position_cache;
     }
 }
 
@@ -177,13 +147,15 @@ void region<dimension, float_type, geometry_type>::luaopen(lua_State* L)
                 [
                     class_<runtime>("runtime")
                         .def_readonly("update_mask", &runtime::update_mask)
-                        .def_readonly("update_permutation", &runtime::update_permutation)
+                        .def_readonly("update_selection", &runtime::update_selection)
                 ]
                 .def_readonly("runtime", &region::runtime_)
           , def("region", &std::make_shared<region
                   , std::shared_ptr<particle_type const>
                   , std::shared_ptr<box_type const>
-                  , std::shared_ptr<geometry_type const>
+                  , std::shared_ptr<geometry_type>
+                  , geometry_selection
+                  , std::shared_ptr<logger>
               >)
         ]
     ];

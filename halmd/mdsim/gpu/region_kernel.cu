@@ -1,5 +1,5 @@
 /*
- * Copyright © 2014 Nicolas Höft
+ * Copyright © 2014-2015 Nicolas Höft
  *
  * This file is part of HALMD.
  *
@@ -17,11 +17,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <halmd/mdsim/gpu/region_kernel.hpp>
+#include <halmd/algorithm/gpu/copy_if_kernel.cuh>
+#include <halmd/mdsim/geometries/cuboid.hpp>
 #include <halmd/mdsim/gpu/box_kernel.cuh>
+#include <halmd/mdsim/gpu/region_kernel.hpp>
 #include <halmd/utility/gpu/thread.cuh>
 
-#include <halmd/mdsim/geometries/cuboid.hpp>
+#include <cub/iterator/counting_input_iterator.cuh>
 
 namespace halmd {
 namespace mdsim {
@@ -34,6 +36,7 @@ __global__ void compute_mask(
   , unsigned int nparticle
   , unsigned int* g_mask
   , geometry_type const geometry
+  , geometry_selection selection
   , vector_type box_length
 )
 {
@@ -48,30 +51,59 @@ __global__ void compute_mask(
 
     // enforce periodic boundary conditions
     box_kernel::reduce_periodic(r, box_length);
+    bool inside = geometry(r);
+    if(selection == excluded)
+        inside = !inside;
     // 1 means the particle in in the selector, 0 means outside
-    g_mask[i] = geometry(r) ? 1 : 0;
+    g_mask[i] = inside ? 1 : 0;
 }
 
-/**
- * generate ascending index sequence
- */
-__global__ void gen_index(unsigned int* g_index, unsigned int nparticle)
+template<typename geometry_type>
+struct geometry_predicate
 {
-    g_index[GTID] = (GTID < nparticle) ? GTID : 0;
-}
+    typedef typename geometry_type::vector_type vector_type;
 
-__global__ void compute_bin_border(
-    unsigned int* g_offset
-  , unsigned int* const g_mask
-  , unsigned int nparticle
-)
-{
-    unsigned int const i = GTID;
-    if(i >= nparticle-1)
-        return;
-    if (g_mask[i+1] > g_mask[i]) {
-        *g_offset = i+1;
+    geometry_predicate(float4 const* position, geometry_type const& geometry, geometry_selection sel)
+      : position_(position)
+      , geometry_(geometry)
+      , selection_(sel)
+    {};
+
+    HALMD_GPU_ENABLED bool operator()(int const& i)
+    {
+        vector_type r;
+        unsigned int type;
+        tie(r, type) <<= position_[i];
+        bool inside = geometry_(r);
+        if (selection_ == excluded)
+            return !inside;
+        return inside;
     }
+
+private:
+    float4 const* position_; // position array
+    geometry_type const geometry_;
+    geometry_selection selection_;
+
+};
+
+template <typename geometry_type>
+unsigned int copy_selection(float4 const* g_r, unsigned int nparticle, unsigned int* g_output, geometry_type const geometry, geometry_selection selection)
+{
+    typedef geometry_predicate<geometry_type> predicate_type;
+    predicate_type predicate(g_r, geometry, selection);
+
+    // we need indices, not the positions itself.
+    cub::CountingInputIterator<int> index(0);
+    typedef unsigned int* OutputIterator;
+    unsigned int output_size = halmd::algorithm::gpu::copy_if_wrapper<cub::CountingInputIterator<int>, OutputIterator, predicate_type>::kernel.copy_if(
+        index
+      , nparticle
+      , predicate
+      , g_output
+    );
+
+    return output_size;
 }
 
 } // namespace region_kernel
@@ -80,8 +112,7 @@ template<int dimension, typename geometry_type>
 region_wrapper<dimension, geometry_type> const
 region_wrapper<dimension, geometry_type>::kernel = {
     region_kernel::compute_mask
-  , region_kernel::gen_index
-  , region_kernel::compute_bin_border
+  , region_kernel::copy_selection<geometry_type>
 };
 
 template class region_wrapper<3, halmd::mdsim::geometries::cuboid<3, float> >;
@@ -89,4 +120,5 @@ template class region_wrapper<2, halmd::mdsim::geometries::cuboid<2, float> >;
 
 } // namespace gpu
 } // namespace mdsim
+
 } // namespace halmd

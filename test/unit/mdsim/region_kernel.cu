@@ -21,5 +21,18 @@
 
 #include <halmd/mdsim/gpu/region_kernel.cu>
 
-template class halmd::mdsim::gpu::region_wrapper<2, simple_geometry<2, float> >;
-template class halmd::mdsim::gpu::region_wrapper<3, simple_geometry<3, float> >;
+namespace halmd {
+namespace mdsim {
+namespace gpu {
+template class geometry_predicate<simple_geometry<3, float> >;
+template class geometry_predicate<simple_geometry<2, float> >;
+
+template class region_wrapper<2, simple_geometry<2, float> >;
+template class region_wrapper<3, simple_geometry<3, float> >;
+
+}
+}
+
+/*template class algorithm::gpu::copy_if_wrapper<unsigned int, mdsim::gpu::geometry_predicate<simple_geometry<2, float> > >;
+template class algorithm::gpu::copy_if_wrapper<unsigned int, mdsim::gpu::geometry_predicate<simple_geometry<3, float> > >;*/
+}

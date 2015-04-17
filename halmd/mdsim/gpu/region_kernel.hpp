@@ -1,5 +1,5 @@
 /*
- * Copyright © 2014 Nicolas Höft
+ * Copyright © 2014-2015 Nicolas Höft
  *
  * This file is part of HALMD.
  *
@@ -24,9 +24,16 @@
 
 #include <cuda_wrapper/cuda_wrapper.hpp>
 
+#include <boost/function.hpp>
+
 namespace halmd {
 namespace mdsim {
 namespace gpu {
+
+enum geometry_selection {
+    excluded = 1
+  , included = 2
+};
 
 template<int dimension, typename geometry_type>
 struct region_wrapper
@@ -39,21 +46,17 @@ struct region_wrapper
       , unsigned int  // nparticle
       , unsigned int* // mask
       , geometry_type const
+      , geometry_selection
       , vector_type  // box length
     )> compute_mask;
 
-    /** generate ascending index sequence */
-    cuda::function<void (
-        unsigned int*  // index sequence
-      , unsigned int   // nparticle
-    )> gen_index;
-
-    /** calculate position where the mask 0…01…1 switches from 0->1 */
-    cuda::function<void (
-        unsigned int*       // offset
-      , unsigned int* const // mask
-      , unsigned int        // nparticle
-    )> compute_bin_border;
+    boost::function<unsigned int (
+        float4 const*        // position
+      , unsigned int         // nparticle
+      , unsigned int*        // output array
+      , geometry_type const  // predicate
+      , geometry_selection   // geometry selection
+    )> copy_selection;
 
     static region_wrapper const kernel;
 };

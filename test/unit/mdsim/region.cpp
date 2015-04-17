@@ -1,5 +1,5 @@
 /*
- * Copyright © 2014 Nicolas Höft
+ * Copyright © 2014-2015 Nicolas Höft
  *
  * This file is part of HALMD.
  *
@@ -68,13 +68,9 @@ test_region(region_type& region, geometry_type& geometry, typename region_type::
     std::shared_ptr<halmd::accumulator<double>> runtime = std::make_shared<halmd::accumulator<double>>();
     profiler.on_profile(runtime, "update particle region");
 
-    typedef typename region_type::iterator_range_type iterator_range_type;
-    iterator_range_type included_range;
-    iterator_range_type excluded_range;
     {
         halmd::utility::profiler::scoped_timer_type timer(*runtime);
-        excluded_range = region.excluded();
-        included_range = region.included();
+        auto const& selection = read_cache(region.selection());
     }
     // output profiling timers
     profiler.profile();
@@ -83,38 +79,22 @@ test_region(region_type& region, geometry_type& geometry, typename region_type::
     std::vector<size_type> mask;
     mask.reserve(particle.nparticle());
     get_mask(region, back_inserter(mask));
-    for(int i = 0; i < particle.nparticle(); ++i) {
+    for(size_type i = 0; i < particle.nparticle(); ++i) {
         vector_type r = position[i];
         box.reduce_periodic(r);
         size_type mask_expected = geometry(r) ? 1 : 0;
         BOOST_CHECK_EQUAL(mask_expected, mask[i]);
     }
 
-    get_excluded(region, back_inserter(particle_index));
-    get_included(region, back_inserter(particle_index));
+    get_selection(region, back_inserter(particle_index));
 
     // check that each particle is sorted into the correct bin
-    for (int i = 0; i < region.nexcluded(); ++i) {
-        unsigned int idx = particle_index[i];
-        vector_type r = position[idx];
-        box.reduce_periodic(r);
-        BOOST_CHECK_EQUAL(geometry(r), false);
-    }
-    for (int i = region.nexcluded(); i < particle.nparticle(); ++i) {
+    for (size_type i = 0; i < region.size(); ++i) {
         unsigned int idx = particle_index[i];
         vector_type r = position[idx];
         box.reduce_periodic(r);
         BOOST_CHECK_EQUAL(geometry(r), true);
     }
-
-    // check that all particles were binned (inside/outside region)
-    sort(particle_index.begin(), particle_index.end());
-    BOOST_CHECK_EQUAL_COLLECTIONS(
-        particle_index.begin()
-      , particle_index.end()
-      , boost::counting_iterator<unsigned int>(0)
-      , boost::counting_iterator<unsigned int>(particle.nparticle())
-    );
 }
 
 template<typename region_type, typename shape_type, typename geometry_type>
@@ -130,7 +110,7 @@ test_uniform_density(shape_type const& shape, std::shared_ptr<geometry_type>& ge
 
     // convert box edge lengths to edge vectors
     boost::numeric::ublas::diagonal_matrix<typename box_type::matrix_type::value_type> edges(shape.size());
-    for (unsigned int i = 0; i < shape.size(); ++i) {
+    for (size_type i = 0; i < shape.size(); ++i) {
         edges(i, i) = shape[i];
     }
 
@@ -141,7 +121,7 @@ test_uniform_density(shape_type const& shape, std::shared_ptr<geometry_type>& ge
     // create system of particles of number of lattice points
     std::shared_ptr<particle_type> particle(new particle_type(lattice.size(), 1));
     // create particle region
-    region_type region(particle, box, geometry);
+    region_type region(particle, box, geometry, region_type::included);
 
     BOOST_TEST_MESSAGE( "number density " << particle->nparticle() / box->volume() );
 
@@ -223,6 +203,7 @@ HALMD_TEST_INIT( region )
         typedef halmd::fixed_vector<size_t, dimension> shape_type;
 
         auto uniform_density = [=]() {
+            set_cuda_device device;
             std::shared_ptr<geometry_type> geometry(new geometry_type({0,0}));
             test_uniform_density<region_type, shape_type>(
                 {4, 7} // non-square box
@@ -232,6 +213,7 @@ HALMD_TEST_INIT( region )
         ts_gpu_two->add(BOOST_TEST_CASE( uniform_density ));
 
         auto uniform_density_all_excluded = [=]() {
+            set_cuda_device device;
             std::shared_ptr<geometry_type> geometry(new geometry_type({-4,-7}));
             test_uniform_density<region_type, shape_type>(
                 {4, 7} // non-square box with coprime edge lengths
@@ -241,6 +223,7 @@ HALMD_TEST_INIT( region )
         ts_gpu_two->add(BOOST_TEST_CASE( uniform_density_all_excluded ));
 
         auto uniform_density_all_included = [=]() {
+            set_cuda_device device;
             std::shared_ptr<geometry_type> geometry(new geometry_type({4,7}));
             test_uniform_density<region_type, shape_type>(
                 {4, 7} // non-square box
@@ -257,6 +240,7 @@ HALMD_TEST_INIT( region )
         typedef halmd::fixed_vector<size_t, dimension> shape_type;
 
         auto uniform_density = [=]() {
+            set_cuda_device device;
             std::shared_ptr<geometry_type> geometry(new geometry_type({0,0,0}));
             test_uniform_density<region_type, shape_type>(
                 {40, 70, 90}
@@ -266,6 +250,7 @@ HALMD_TEST_INIT( region )
         ts_gpu_three->add(BOOST_TEST_CASE( uniform_density ));
 
         auto uniform_density_all_excluded = [=]() {
+            set_cuda_device device;
             std::shared_ptr<geometry_type> geometry(new geometry_type({-4,-7,-9}));
             test_uniform_density<region_type, shape_type>(
                 {4, 7, 9}
@@ -275,6 +260,7 @@ HALMD_TEST_INIT( region )
         ts_gpu_three->add(BOOST_TEST_CASE( uniform_density_all_excluded ));
 
         auto uniform_density_all_included = [=]() {
+            set_cuda_device device;
             std::shared_ptr<geometry_type> geometry(new geometry_type({4,7,9}));
             test_uniform_density<region_type, shape_type>(
                 {4, 7, 9}

@@ -37,6 +37,11 @@ local profiler = require("halmd.utility.profiler")
 -- grab C++ wrappers
 local region = libhalmd.mdsim.region
 
+local geometry_selection = {
+    excluded = 1
+  , included = 2
+}
+
 ---
 -- Construct region instance.
 --
@@ -44,6 +49,7 @@ local region = libhalmd.mdsim.region
 -- :param args.particle: instance of :class:`halmd.mdsim.particle`
 -- :param args.box: instance of :class:`halmd.mdsim.box`
 -- :param table args.geometry: geometry of the region, instance of :mod:`halmd.mdsim.geometries`
+-- :param string args.selection: select particles within or outside the geometry. Allowed values are ``included`` and ``excluded``.
 -- :param string args.label: instance label
 --
 -- .. attribute:: particle
@@ -60,10 +66,14 @@ local M = module(function(args)
     local box = utility.assert_kwarg(args, "box")
     local label = utility.assert_type(utility.assert_kwarg(args, "label"), "string")
     local geometry = utility.assert_kwarg(args, "geometry")
+    local selection = utility.assert_type(utility.assert_kwarg(args, "selection"), "string")
 
+    if not geometry_selection[selection] then
+        error(("unsupported geometry selection '%s'"):format(selection), 2)
+    end
 
     -- construct region instance
-    local self = region(particle, box, geometry)
+    local self = region(particle, box, geometry, geometry_selection[selection])
 
     -- store label as Lua property
     self.label = property(function(self)
@@ -81,7 +91,7 @@ local M = module(function(args)
     -- connect region module to profiler
     local runtime = assert(self.runtime)
     table.insert(conn, profiler:on_profile(runtime.update_mask, "update region mask (" .. label .. ")"))
-    table.insert(conn, profiler:on_profile(runtime.update_permutation, "update region particle permutation (" .. label .. ")"))
+    table.insert(conn, profiler:on_profile(runtime.update_selection, "update region selection (" .. label .. ")"))
 
     return self
 end)
