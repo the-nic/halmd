@@ -1,5 +1,5 @@
 --
--- Copyright © 2014 Nicolas Höft
+-- Copyright © 2014-2015 Nicolas Höft
 --
 -- This file is part of HALMD.
 --
@@ -63,7 +63,7 @@ end
 local function test(box, particle, region, cuboid, args)
     -- construct included/excluded particle groups
     local group_included = mdsim.particle_groups.from_region({particle = particle, region = region["included"], label = "included"})
-    local group_excluded = mdsim.particle_groups.from_region({particle = particle, region = region["excluded"], selection = "excluded", label = "excluded"})
+    local group_excluded = mdsim.particle_groups.from_region({particle = particle, region = region["excluded"], label = "excluded"})
     -- check if the total number of particles is correct
     assert(group_excluded.size + group_included.size == args.particles)
 

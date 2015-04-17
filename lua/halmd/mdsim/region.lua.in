@@ -1,5 +1,5 @@
 --
--- Copyright © 2014 Nicolas Höft
+-- Copyright © 2014-2015 Nicolas Höft
 --
 -- This file is part of HALMD.
 --
@@ -17,6 +17,7 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 --
 
+local log      = require("halmd.io.log")
 local utility  = require("halmd.utility")
 local module   = require("halmd.utility.module")
 local profiler = require("halmd.utility.profiler")
@@ -72,8 +73,10 @@ local M = module(function(args)
         error(("unsupported geometry selection '%s'"):format(selection), 2)
     end
 
+    local logger = log.logger({prefix = ("region (%s)"):format(label)})
+
     -- construct region instance
-    local self = region(particle, box, geometry, geometry_selection[selection])
+    local self = region(particle, box, geometry, geometry_selection[selection], logger)
 
     -- store label as Lua property
     self.label = property(function(self)
