@@ -49,7 +49,7 @@ public:
     /**
      * returns true if the position is within the geometry
      */
-    HALMD_GPU_ENABLED bool operator()(vector_type r) const;
+    HALMD_GPU_ENABLED bool operator()(vector_type const& r) const;
 
 private:
     vector_type origin_;
@@ -57,13 +57,13 @@ private:
 };
 
 template<int dimension, typename float_type>
-HALMD_GPU_ENABLED bool cuboid<dimension, float_type>::operator()(vector_type r) const
+HALMD_GPU_ENABLED bool cuboid<dimension, float_type>::operator()(vector_type const& r) const
 {
     bool inside = true;
-    r -= origin_;
+    vector_type const dr = r - origin_;
 
     for (int i = 0; i < dimension; ++i) {
-        if (r[i] < 0 || r[i] > edge_length_[i]) {
+        if (dr[i] < 0 || dr[i] > edge_length_[i]) {
             inside = false;
         }
     }
